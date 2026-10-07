@@ -140,17 +140,22 @@ module.exports = function startArena(ctx) {
     }
     return best;
   }
-  // the world record: the fastest time by a player in good standing (bots don't count)
+  // the world record: the fastest time by players in good standing (bots don't count); everyone on
+  // that exact time holds it (a tie), so `by` lists every holder and `keys` their accounts
   function wrOf(seed) {
     return cached('w' + seed, 5e3, () => {
       let best = null;
       for (const [k, u] of Object.entries(users)) {
         const t = u.best[seed];
-        if (t != null && counts(u) && (!best || t < best.ticks)) best = { ticks: t, by: u.name, key: k };
+        if (t == null || !counts(u)) continue;
+        if (!best || t < best.ticks) best = { ticks: t, by: [u.name], keys: [k] };
+        else if (t === best.ticks) { best.by.push(u.name); best.keys.push(k); }
       }
+      if (best) { const o = best.by.map((n, i) => [n, best.keys[i]]).sort((a, b) => a[0].localeCompare(b[0])); best.by = o.map((x) => x[0]); best.keys = o.map((x) => x[1]); }
       return best;
     });
   }
+  const holds = (w, u) => !!w && w.by.includes(u.name);
   function puzzleMode(seed) { return cached('m' + seed, 30e3, () => modeNow(seed)); }
   function modeNow(seed) {
     const rec = recordOf(seed), ratios = [];
@@ -171,9 +176,9 @@ module.exports = function startArena(ctx) {
   function medals(u) {
     const m = { gold: 0, silver: 0, bronze: 0, records: 0, wrs: 0 };
     for (const [s, t] of Object.entries(u.best)) {
-      const k = medalOf(t, ctx.botRuns(+s)); if (k) m[k]++;
       const r = recordOf(+s); if (r && !r.bot && r.by === u.name) m.records++;
-      const w = wrOf(+s); if (w && w.by === u.name) m.wrs++;
+      if (holds(wrOf(+s), u)) { m.wrs++; continue; } // a WR (tied too) is a blue medal instead of gold/silver/bronze
+      const k = medalOf(t, ctx.botRuns(+s)); if (k) m[k]++;
     }
     m.blue = m.wrs; // holding a WR is a blue medal
     return m;
@@ -290,7 +295,7 @@ module.exports = function startArena(ctx) {
   }
   const wrPublic = (seed) => { const w = wrOf(seed); return w && { ticks: w.ticks, by: w.by }; };
   // the WR holder's run, to race as a ghost
-  function wrFrames(seed) { const w = wrOf(seed); return w ? readJSON(bestFile(w.key), {})[seed] || null : null; }
+  function wrFrames(seed) { const w = wrOf(seed); return w ? readJSON(bestFile(w.keys[0]), {})[seed] || null : null; }
   function start(key) {
     const u = users[key], mode = u.mode;
     if (u.banned) throw new Error('This account is banned.');
@@ -324,8 +329,10 @@ module.exports = function startArena(ctx) {
     logTry(entry); saveUsers(); checkFlags(key);
     if (best) for (const k of ['r', 'w', 'm']) cache.delete(k + open.seed);
     const rec = recordOf(open.seed), wr = wrOf(open.seed);
-    return { end, ticks: run.ticks, claimed: entry.claimed, best, medal: end === 'arrived' ? medalOf(run.ticks, ctx.botRuns(open.seed)) : null,
-      record: rec, wr: wrPublic(open.seed), newWR: end === 'arrived' && !!wr && wr.by === u.name && (!wrBefore || run.ticks < wrBefore.ticks),
+    return { end, ticks: run.ticks, claimed: entry.claimed, best,
+      medal: end !== 'arrived' ? null : holds(wr, u) && run.ticks === wr.ticks ? 'blue' : medalOf(run.ticks, ctx.botRuns(open.seed)),
+      record: rec, wr: wrPublic(open.seed), newWR: end === 'arrived' && holds(wr, u) && (!wrBefore || run.ticks < wrBefore.ticks),
+      tiedWR: end === 'arrived' && holds(wr, u) && !!wrBefore && run.ticks === wrBefore.ticks && !holds(wrBefore, u),
       newRecord: end === 'arrived' && !!rec && !rec.bot && rec.by === u.name && (!recBefore || run.ticks < recBefore.ticks),
       session: { tries: cur.tries, restarts: cur.restarts, deaths: cur.deaths, best: cur.best } };
   }
@@ -378,8 +385,8 @@ module.exports = function startArena(ctx) {
     const u = users[key];
     return Object.entries(u.best).map(([s, t]) => {
       const seed = +s, w = wrOf(seed), bt = botTimes(seed);
-      return { seed, mode: puzzleMode(seed), you: t, wr: w && { ticks: w.ticks, by: w.by }, holdsWR: !!w && w.by === u.name,
-        bot: bt.search ?? null, medal: medalOf(t, ctx.botRuns(seed)), starred: !!(u.stars && u.stars[seed]) };
+      return { seed, mode: puzzleMode(seed), you: t, wr: w && { ticks: w.ticks, by: w.by }, holdsWR: holds(w, u),
+        bot: bt.search ?? null, medal: holds(w, u) ? 'blue' : medalOf(t, ctx.botRuns(seed)), starred: !!(u.stars && u.stars[seed]) };
     }).sort((a, b) => a.seed - b.seed);
   }
   function puzzleBoard(seed) {

@@ -185,10 +185,14 @@ addEventListener('keydown',e=>{if(tab!=='play')return;const k=KEYMAP[e.code];if(
  if((e.code==='KeyN'||e.code==='Enter')&&P.state!=='load')goNext();
  if(e.code==='KeyB'&&P.state!=='load')goBack();
  if(e.code==='KeyP')togglePause();});
-function togglePause(){
- if(P.paused){P.paused=false;if(P.state==='count')P.countEnd=performance.now()+P.countLeft;P.acc=0;$('count').style.fontSize='';return;}
+// no movement key for 3 seconds during a run: pause by itself (P carries on exactly where it was)
+const IDLE_PAUSE=3000;
+let lastKeyAt=performance.now();
+addEventListener('keydown',e=>{if(KEYMAP[e.code])lastKeyAt=performance.now();});
+function togglePause(auto){
+ if(P.paused){P.autoPaused=false;lastKeyAt=performance.now();P.paused=false;if(P.state==='count')P.countEnd=performance.now()+P.countLeft;P.acc=0;$('count').style.fontSize='';return;}
  if(P.state!=='run'&&P.state!=='count')return;
- P.paused=true;P.countLeft=P.countEnd-performance.now();for(const k in held)held[k]=false;
+ P.paused=true;P.autoPaused=!!auto;P.countLeft=P.countEnd-performance.now();for(const k in held)held[k]=false;
 }
 $('bnext').onclick=()=>{if(P.state!=='load')goNext();};
 $('bback').onclick=()=>{if(P.state!=='load')goBack();};
@@ -241,10 +245,11 @@ function restart(){
  $('card').style.display='none';
 }
 function stepPlay(dt){
- if(P.paused){$('count').style.display='block';$('count').style.fontSize='48px';$('count').textContent='Paused · P to resume';return;}
+ if(P.paused){$('count').style.display='block';$('count').style.fontSize='48px';$('count').textContent=(P.autoPaused?'Paused (no keys for 3 s)':'Paused')+' · P to resume';return;}
+ if(P.state==='run'&&!Object.values(held).some(Boolean)&&performance.now()-lastKeyAt>IDLE_PAUSE){togglePause(true);return;}
  if(P.state==='count'){const left=P.countEnd-performance.now();
   $('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/667);
-  if(left<=0){P.state='run';P.acc=0;} return;}
+  if(left<=0){P.state='run';P.acc=0;lastKeyAt=performance.now();} return;}
  if(P.state!=='run')return;
  P.acc+=dt*60;let n=0;
  while(P.acc>=1&&n<5){P.acc--;n++;
