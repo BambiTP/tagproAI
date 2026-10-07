@@ -183,7 +183,13 @@ const KEYMAP={ArrowUp:'u',KeyW:'u',ArrowDown:'d',KeyS:'d',ArrowLeft:'l',KeyA:'l'
 addEventListener('keydown',e=>{if(tab!=='play')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
  if(e.code==='KeyR'&&(P.state==='run'||P.state==='count'||P.state==='done')){cancelAuto();restart();}
  if((e.code==='KeyN'||e.code==='Enter')&&P.state!=='load')goNext();
- if(e.code==='KeyB'&&P.state!=='load')goBack();});
+ if(e.code==='KeyB'&&P.state!=='load')goBack();
+ if(e.code==='KeyP')togglePause();});
+function togglePause(){
+ if(P.paused){P.paused=false;if(P.state==='count')P.countEnd=performance.now()+P.countLeft;P.acc=0;$('count').style.fontSize='';return;}
+ if(P.state!=='run'&&P.state!=='count')return;
+ P.paused=true;P.countLeft=P.countEnd-performance.now();for(const k in held)held[k]=false;
+}
 $('bnext').onclick=()=>{if(P.state!=='load')goNext();};
 $('bback').onclick=()=>{if(P.state!=='load')goBack();};
 $('pList').onchange=async()=>{P.list=$('pList').value;
@@ -230,11 +236,12 @@ function restart(){
  // an R press part-way through a try: tell the server so restarts are counted
  if(P.d&&(P.state==='run'||P.state==='count')&&P.t>0)fetch('restart',{method:'POST',body:JSON.stringify({seed:P.d.seed,ticks:P.t})}).catch(()=>{});
  const d=P.d;P.sim=new BSim(JSON.parse(JSON.stringify(d.map)));P.p=P.sim.addBall(1);
- P.sim.place(P.p,d.start.x,d.start.y,d.start.vx,d.start.vy);
+ P.sim.place(P.p,d.start.x,d.start.y,d.start.vx,d.start.vy);P.paused=false;$('count').style.fontSize='';
  P.keys=[];P.t=0;P.acc=0;P.state='count';P.countEnd=performance.now()+2000;P.tryNo=(P.tryNo||0)+1;
  $('card').style.display='none';
 }
 function stepPlay(dt){
+ if(P.paused){$('count').style.display='block';$('count').style.fontSize='48px';$('count').textContent='Paused · P to resume';return;}
  if(P.state==='count'){const left=P.countEnd-performance.now();
   $('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/667);
   if(left<=0){P.state='run';P.acc=0;} return;}
@@ -258,14 +265,15 @@ async function finish(res){
  const c=$('card');
  if(r.error){c.innerHTML='<h2>Hmm</h2>'+r.error;c.style.display='block';setTimeout(newPuzzle,2500);return;}
  const b=r.bots;let head,line='';
+ const tieS=r.result==='arrived'&&b&&b.search.result==='arrived'&&r.ticks===b.search.ticks;
  if(r.result==='arrived'){
   const beatS=b&&(b.search.result!=='arrived'||r.ticks<b.search.ticks), beatB=b&&(b.baseline.result!=='arrived'||r.ticks<b.baseline.ticks);
-  head=!b?'Made it!':beatS&&beatB?'You beat both bots!':beatS?'You beat the planning bot!':beatB?'You beat the simple bot':'Made it, but both bots were faster';
+  head=!b?'Made it!':tieS?'Tied with the planning bot':beatS&&beatB?'You beat both bots!':beatS?'You beat the planning bot!':beatB?'You beat the simple bot':'Made it, but both bots were faster';
   if(r.best&&P.d.ghosts.you)line='<div class=you>New personal best</div>';
  } else head=r.result==='pop'?'Popped on a spike':'Out of time';
  c.innerHTML='<h2>'+head+'</h2>'+line+
   '<div class=you>You: '+(r.result==='arrived'?secs(r.ticks):'—')+'</div>'+
-  '<div class=s>Planning bot: '+fmt(b&&b.search)+'</div><div class=b>Simple bot: '+fmt(b&&b.baseline)+'</div>'+
+  '<div class=s>Planning bot: '+fmt(b&&b.search)+(tieS?' <b>(tied)</b>':'')+'</div><div class=b>Simple bot: '+fmt(b&&b.baseline)+'</div>'+
   (res!==r.result?'<div class=dim>(the server\'s replay disagreed with your browser; the server\'s result counts)</div>':'')+
   (r.result==='arrived'?'<div class=dim>Next puzzle in a moment · <b>R</b> try again · <b>N</b> go now</div><div class="bar"><i></i></div>'
    :'<div class=dim>'+(r.next!==P.d.next&&!P.d.retry?'Moving on…':'Trying again…')+' <b>N</b> skip</div>');

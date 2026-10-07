@@ -24,7 +24,7 @@ const START_RATING = 1000, K_PLAYER = 32, K_PUZZLE = 16;
 const TRY_FACTOR = 0.98;             // each try after the first takes 2% off a puzzle's result
 const TOKEN_DAYS = 30;
 const MODES = ['easy', 'medium', 'hard', 'expert'];
-const LISTS = [...MODES, 'starred'];   // 'starred': the player's saved puzzles, in any mode
+const LISTS = [...MODES, 'starred', 'pick'];   // 'starred': the player's saved puzzles; 'pick': one chosen from the table
 const BOTS = { search: 'planning bot', baseline: 'simple bot', fast: 'fast planning bot', net: 'network', guided: 'network-guided' };
 
 const readJSON = (f, d) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : d);
@@ -69,6 +69,7 @@ module.exports = function startArena(ctx) {
   const getUser = (key) => (typeof key === 'string' && Object.prototype.hasOwnProperty.call(users, key) ? users[key] : null);
   for (const k of ADMINS) if (getUser(k)) users[k].admin = true;
   for (const k of Object.keys(users)) if (!ADMINS.includes(k)) users[k].admin = false;
+  for (const u of Object.values(users)) u.flags = (u.flags || []).filter((f) => f.kind === 'idle-run' || f.kind === 'fast-norm'); // older rules retired
   for (const [t, v] of Object.entries(tokens)) if (v.exp < now()) delete tokens[t];
   const origins = ctx.origins || ORIGINS;
   const devOrigins = !!process.env.ARENA_DEV; // allow http://localhost pages only when testing
@@ -161,7 +162,7 @@ module.exports = function startArena(ctx) {
     const bt = Object.values(botTimes(seed)), trick = trickMode(bt.length ? Math.min(...bt) : null, human);
     return harder(ratios.length >= 3 ? playerMode(ratios) : botMode(ctx.botRuns(seed)), trick);
   }
-  const inList = (s, mode, u) => (mode === 'starred' ? !!(u.stars && u.stars[s]) : puzzleMode(s) === mode);
+  const inList = (s, mode, u) => (mode === 'starred' ? !!(u.stars && u.stars[s]) : mode === 'pick' ? s === u.pick : puzzleMode(s) === mode);
   function nextReady(from, mode, u) {
     let best = null;
     for (const s of ctx.ready) if (s >= from && ctx.playable(s) && (best === null || s < best) && inList(s, mode, u)) best = s;
@@ -174,6 +175,7 @@ module.exports = function startArena(ctx) {
       const r = recordOf(+s); if (r && !r.bot && r.by === u.name) m.records++;
       const w = wrOf(+s); if (w && w.by === u.name) m.wrs++;
     }
+    m.blue = m.wrs; // holding a WR is a blue medal
     return m;
   }
 
@@ -195,7 +197,7 @@ module.exports = function startArena(ctx) {
   const blank = () => ({ tries: 0, restarts: 0, deaths: 0, best: null });
   function tally(s, t) {
     if (!isTry(t.end)) return;
-    s.tries++;
+    if (!(isRestart(t.end) && t.idle)) s.tries++; // resetting before pressing a key is free
     if (isRestart(t.end)) s.restarts++; else if (t.end === 'pop' || t.end === 'timeout') s.deaths++;
     else if (t.end === 'arrived' && (s.best == null || t.ticks < s.best)) s.best = t.ticks;
   }
@@ -215,16 +217,48 @@ module.exports = function startArena(ctx) {
   }
 
   // ---------- automatic R-spam flags ----------
+  // Restarting quickly is often normal (a bad start is obvious early on some puzzles), so speed alone
+  // isn't flagged. Two patterns are:
+  //  - pressing only R: 10+ restarts in a row with no movement key at all, spread over 15+ seconds
+  //  - restarting far faster than is normal on that puzzle: 20 of the last 30 judged restarts under a third
+  //    of the puzzle's typical restart time (judged only where 3+ other players made 20+ restarts)
+  const IDLE_RUN = 10, IDLE_SPAN = 15e3, FAST_SHARE = 20, FAST_OF = 30, NORM_MIN = 20, NORM_PLAYERS = 3;
+  // a puzzle's typical restart time (the middle one, in ticks), from players in good standing other than `except`
+  function restartNorm(seed, except) {
+    return cached('n' + seed + ':' + except, 60e3, () => {
+      const ts = [], who = new Set();
+      for (const [k, list] of byUser) {
+        if (k === except || !counts(getUser(k))) continue;
+        for (const t of list) if (t.seed === seed && t.end === 'restart' && !t.idle) { ts.push(t.ticks); who.add(k); }
+      }
+      if (ts.length < NORM_MIN || who.size < NORM_PLAYERS) return null;
+      ts.sort((a, b) => a - b); return ts[ts.length >> 1];
+    });
+  }
+  function longestIdleRun(list) {
+    let best = { n: 0, span: 0 }, n = 0, from = 0;
+    for (const t of list) {
+      if (!isTry(t.end)) continue;
+      if (isRestart(t.end) && t.idle) { if (!n) from = t.at; n++; if (n > best.n) best = { n, span: t.at - from }; }
+      else n = 0;
+    }
+    return best;
+  }
+  function fastShare(key) {
+    const judged = [];
+    for (const t of triesOf(key)) {
+      if (t.end !== 'restart' || t.idle) continue;
+      const norm = restartNorm(t.seed, key); if (norm == null) continue;
+      judged.push(t.ticks < norm / 3);
+    }
+    const last = judged.slice(-FAST_OF);
+    return { fast: last.filter(Boolean).length, of: last.length };
+  }
   function checkFlags(key) {
     const u = users[key]; if (!u || u.trusted) return;
-    const rs = triesOf(key).filter((t) => isRestart(t.end)), last = rs.slice(-30), recent = rs.filter((t) => t.at > now() - 10 * 60e3);
-    const reasons = [];
-    if (recent.length >= 40) reasons.push(['fast', `${recent.length} restarts in 10 minutes`]);
-    if (last.length >= 20) {
-      const instant = last.filter((t) => t.ticks < 30).length, idle = last.filter((t) => t.idle).length;
-      if (instant / last.length > 0.6) reasons.push(['instant', `${instant} of the last ${last.length} restarts within half a second`]);
-      if (idle / last.length > 0.7) reasons.push(['idle', `${idle} of the last ${last.length} restarts without pressing a key`]);
-    }
+    const reasons = [], idle = longestIdleRun(triesOf(key)), fs_ = fastShare(key);
+    if (idle.n >= IDLE_RUN && idle.span >= IDLE_SPAN) reasons.push(['idle-run', `${idle.n} restarts in a row without a movement key, over ${Math.round(idle.span / 1000)} s`]);
+    if (fs_.of >= 20 && fs_.fast >= FAST_SHARE) reasons.push(['fast-norm', `${fs_.fast} of the last ${fs_.of} restarts under a third of the puzzle's typical restart time`]);
     const fresh = reasons.filter(([kind]) => !u.flags.some((f) => f.kind === kind));
     if (fresh.length) {
       const wasCounted = counts(u);
@@ -241,7 +275,8 @@ module.exports = function startArena(ctx) {
     const u = users[key], mode = u.mode, seed = nextReady(u.next[mode], mode, u);
     u.stars = u.stars || {}; u.next.starred = u.next.starred || ctx.FIRST;
     const left = Object.fromEntries(LISTS.map((m) => [m, [...ctx.ready].filter((s) => s >= u.next[m] && ctx.playable(s) && inList(s, m, u)).length]));
-    if (seed === null) return { seed: null, mode, left, first: prevReady(Infinity, mode, u) === null, message: mode === 'starred'
+    if (seed === null) return { seed: null, mode, left, first: prevReady(Infinity, mode, u) === null, message: mode === 'pick'
+      ? "That was the puzzle you picked. Pick another from the Leaderboard tab's puzzle table, or choose a mode." : mode === 'starred'
       ? (Object.keys(u.stars).length ? "You're past your last starred puzzle. Press Back to replay them, or star more with the ☆ button." : 'No starred puzzles yet. Press the ☆ button on a puzzle to save it here.')
       : `You've done every ${mode} puzzle that's ready. The bots are still working on new ones; try another mode or check back later.` };
     if (seed !== u.next[mode]) { u.next[mode] = seed; saveUsers(); }
@@ -331,12 +366,21 @@ module.exports = function startArena(ctx) {
     const pz = Object.entries(puzzles).filter(([, p]) => p.sessions > 0).map(([s, p]) => {
       const rec = recordOf(+s), mine = Object.values(users).filter((u) => counts(u) && u.best[s] != null).map((u) => u.best[s] / (rec ? rec.ticks : 1));
       return { seed: +s, mode: puzzleMode(+s), rating: Math.round(p.rating), players: p.sessions, finishRate: p.finishes / p.sessions,
-        triesPer: p.tries / p.sessions, restartsPer: p.restarts / p.sessions,
+        triesPer: p.tries / p.sessions, restartsPer: p.restarts / p.sessions, typicalRestart: (() => { const n = restartNorm(+s, ''); return n == null ? null : n / 60; })(),
         nearRecord: mine.length ? mine.filter((r) => r <= 1.05).length / mine.length : null,
         record: rec && { secs: rec.ticks / 60, by: rec.by, bot: rec.bot }, wr: (() => { const w = wrOf(+s); return w && { secs: w.ticks / 60, by: w.by }; })(),
         botSecs: refTicks(+s) / 60 };
     }).sort((a, b) => b.rating - a.rating);
     return { players, puzzles: pz };
+  }
+  // every puzzle a player has finished: their best against the WR and the planning bot
+  function myTimes(key) {
+    const u = users[key];
+    return Object.entries(u.best).map(([s, t]) => {
+      const seed = +s, w = wrOf(seed), bt = botTimes(seed);
+      return { seed, mode: puzzleMode(seed), you: t, wr: w && { ticks: w.ticks, by: w.by }, holdsWR: !!w && w.by === u.name,
+        bot: bt.search ?? null, medal: medalOf(t, ctx.botRuns(seed)), starred: !!(u.stars && u.stars[seed]) };
+    }).sort((a, b) => a.seed - b.seed);
   }
   function puzzleBoard(seed) {
     const rows = Object.values(users).filter((u) => counts(u) && u.best[seed] != null).map((u) => ({ name: u.name, ticks: u.best[seed], bot: false }));
@@ -355,7 +399,7 @@ module.exports = function startArena(ctx) {
       const mine = triesOf(key).filter((t) => isTry(t.end)), rs = mine.filter((t) => isRestart(t.end));
       return { key, name: u.name, created: u.created, admin: u.admin, banned: u.banned, excluded: u.excluded, trusted: u.trusted,
         flags: u.flags, rating: Math.round(u.rating), sessions: u.sessions, finished: u.finished, tries: mine.length,
-        restarts: rs.length, instant: rs.filter((t) => t.ticks < 30).length, idle: rs.filter((t) => t.idle).length,
+        restarts: rs.length, idle: rs.filter((t) => t.idle).length, idleRun: longestIdleRun(triesOf(key)), fastVsNorm: fastShare(key),
         deaths: mine.filter((t) => t.end === 'pop').length, last: mine.length ? mine[mine.length - 1].at : null, counted: !!counts(u) };
     }).sort((a, b) => (b.last || 0) - (a.last || 0));
   }
@@ -424,12 +468,20 @@ module.exports = function startArena(ctx) {
         const key = user.name.toLowerCase();
         if (p === '/api/logout' && post) { delete tokens[/^Bearer (\w+)$/.exec(req.headers.authorization)[1]]; saveTokens(); return send(req, res, 200, { ok: true }); }
         if (p === '/api/me') return send(req, res, 200, me(key));
+        if (p === '/api/mytimes') return send(req, res, 200, myTimes(key));
         if (p === '/api/current') return send(req, res, 200, current(key));
         if (p === '/api/star' && post) {
           const s = parseInt(body.seed, 10); if (!ctx.ready.has(s)) return send(req, res, 400, { error: 'No such puzzle.' });
           user.stars = user.stars || {};
           if (body.on) user.stars[s] = now(); else delete user.stars[s];
           saveUsers(); return send(req, res, 200, { seed: s, starred: !!user.stars[s], count: Object.keys(user.stars).length });
+        }
+        if (p === '/api/pick' && post) { // play one puzzle chosen from the puzzle table
+          const s = parseInt(body.seed, 10);
+          if (!ctx.ready.has(s) || !ctx.playable(s)) return send(req, res, 400, { error: 'No such puzzle.' });
+          if (user.open) { const e = { u: key, seed: user.open.seed, at: now(), end: 'abandoned', ticks: 0, idle: true }; logTry(e); tally(session(user, user.open.seed), e); user.open = null; }
+          user.pick = s; user.next.pick = ctx.FIRST; user.mode = 'pick'; saveUsers();
+          return send(req, res, 200, current(key));
         }
         if (p === '/api/mode' && post) {
           if (!LISTS.includes(body.mode)) return send(req, res, 400, { error: 'Unknown mode.' });

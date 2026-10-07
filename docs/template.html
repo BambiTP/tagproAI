@@ -22,7 +22,12 @@ canvas.map{display:block;margin:0 auto;max-width:100%}
 #card h2{margin:0 0 6px;font-size:24px}
 #count{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);font-size:90px;font-weight:800;color:#fff;text-shadow:0 0 12px #000;display:none;pointer-events:none}
 .medal{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;margin-right:3px}
-.gold{background:var(--gold)}.silver{background:var(--silver)}.bronze{background:var(--bronze)}
+.gold{background:var(--gold)}.silver{background:var(--silver)}.bronze{background:var(--bronze)}.blue{background:#4a9bff}
+.mbtn{background:none;border:1px solid transparent;border-radius:6px;color:var(--text);padding:2px 5px;cursor:pointer;font:inherit}.mbtn:hover{border-color:#666}
+#times{position:fixed;inset:0;background:#000b;display:none;z-index:10;padding:16px;overflow:auto}
+#times .box{max-width:900px;margin:20px auto;background:var(--panel);border-radius:10px;padding:16px}
+#times .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.ahead{color:#4ade4a}.behind{color:#ff8a7a}
 #login{max-width:360px;margin:60px auto;padding:24px;background:var(--panel);border-radius:10px}
 #login input{width:100%;padding:8px;margin:6px 0;background:#222;color:#fff;border:1px solid #444;border-radius:6px}
 #login h1{margin:0 0 4px;font-size:24px;color:#fff}
@@ -32,7 +37,7 @@ table{border-collapse:collapse;width:100%}th,td{padding:6px 8px;border-bottom:1p
 th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
 .panel{background:var(--panel);border-radius:8px;padding:12px;margin-bottom:16px}
 .panel h3{margin:0 0 4px;color:#fff}.panel p{margin:0 0 8px;color:#999;font-size:13px}
-.flag{color:#ffb04a}.hud .grow{flex:1}#bstar.on{color:var(--gold);border-color:var(--gold)}
+.flag{color:#ffb04a}.pickrow:hover td{background:#242424}.hud .grow{flex:1}#bstar.on{color:var(--gold);border-color:var(--gold)}
 .bar{height:4px;background:#333;border-radius:2px;margin-top:8px;overflow:hidden}.bar i{display:block;height:100%;background:var(--you);width:100%}.modes .btn small{color:var(--dim);font-weight:400}
 @media (max-width:600px){.hud{gap:8px}.big{font-size:18px}}
 </style>
@@ -77,7 +82,7 @@ th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
 
  <div id="board" class="tab"><div class="wrap">
   <div class="panel"><h3>Players</h3><p>Rating goes up for finishing near or under the planning bot's time and down for restarts, deaths and slow finishes. Players need 3 puzzles to appear.</p><div class="scroll"><table id="tplayers"></table></div></div>
-  <div class="panel"><h3>Hardest puzzles</h3><p>Puzzles get their own rating from how players do on them. Only players in good standing count.</p><div class="scroll"><table id="tpuzzles"></table></div></div>
+  <div class="panel"><h3>Hardest puzzles</h3><p>Puzzles get their own rating from how players do on them. Only players in good standing count. Click a puzzle to play it.</p><div class="scroll"><table id="tpuzzles"></table></div></div>
  </div></div>
 
  <div id="help" class="tab"><div class="wrap"><div class="panel">
@@ -85,16 +90,21 @@ th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
   <p style="font-size:14px;color:#ddd;line-height:1.6">Each puzzle is a real TagPro map with a start, a starting velocity and a target. Touch the centre of the green cross as fast as you can, at any speed. The faded balls are bots that ran the same puzzle: the <b style="color:#ff4a4a">planning bot</b> tries thousands of key presses ahead in the real physics, the <b style="color:#4a9bff">simple bot</b> just steers at the target, and the <b style="color:#c070e0">network</b> bots learned to drive from the planning bot.</p>
   <p style="font-size:14px;color:#ddd;line-height:1.6"><b>It's about the best time.</b> Retry a puzzle as often as you like (R), then move on (N). Every puzzle has a <b style="color:var(--gold)">WR</b>, the fastest time by any player, and you can race the WR holder's run as the gold ghost. The leaderboard counts the WRs each player holds.</p>
   <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Modes</b> sort puzzles by how hard the best time is to reach. At first that comes from the bots: on Easy, just steering at the target is about as fast as careful planning; on Expert, careful planning beats plain steering by 40% or more (or a bot couldn't finish at all). Once 3 players have finished a puzzle, its mode comes from how close players get to the record instead. Each mode keeps its own progress.</p>
-  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Medals:</b> <span class="medal gold"></span>gold for beating the planning bot, <span class="medal silver"></span>silver for finishing within 10% of it, <span class="medal bronze"></span>bronze for finishing.</p>
+  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Medals:</b> <span class="medal blue"></span>blue while you hold the WR, <span class="medal gold"></span>gold for beating the planning bot, <span class="medal silver"></span>silver for finishing within 10% of it, <span class="medal bronze"></span>bronze for finishing. Click your medals at the top to see your times against the WR on every puzzle. <b>P</b> pauses.</p>
   <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Rating</b> works like chess, with each puzzle as an opponent, and counts when you move on. Your best time matching the planning bot's is a draw, and half its time is a win. Each try after the first takes 2% off, so retrying pays only when it really improves your time. Moving on without finishing counts as a loss. Every run is checked on the server by replaying your keys in the same physics.</p>
-  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Fair play:</b> accounts that restart in unusual ways (very fast, right at the start, or without pressing keys) are flagged automatically and left out of the puzzle difficulty numbers until an admin reviews them.</p>
+  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Fair play:</b> restarting quickly is fine. Accounts are flagged only for long streaks of restarts without pressing a movement key, or for restarting far faster than players normally do on that puzzle; flagged accounts are left out of the puzzle difficulty numbers and records until an admin reviews them. Resetting before you press a key doesn't cost rating.</p>
  </div></div></div>
 
  <div id="admin" class="tab"><div class="wrap"><div class="panel"><h3>Players</h3>
-  <p>Restarts: total, within half a second, without a key. "Counted" means their runs shape puzzle ratings. Delete removes all their runs (the account stays).</p>
+  <p>Restarts: total · without a movement key · longest run of key-less restarts · restarts under a third of the puzzle's typical restart time (of those that could be judged). "Counted" means their runs shape puzzle ratings and records. Delete removes all their runs (the account stays).</p>
   <div class="scroll"><table id="tadminp"></table></div></div></div></div>
 </div>
 <div id="card"></div><div id="count"></div>
+<div id="times"><div class="box">
+ <div style="display:flex;align-items:center;gap:8px"><h3 style="margin:0;color:#fff;flex:1">Your times against the WR</h3><button class="btn" id="tclose">Close (Esc)</button></div>
+ <div class="chips" id="tchips"></div>
+ <div class="scroll"><table id="ttable"></table></div>
+</div></div>
 
 <script>
 const GIST='__GIST__', GIST_FILE='tagpro-puzzles.json';
@@ -118,6 +128,7 @@ async function findServer(){
 }
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0;};
 const MEDALS=['gold','silver','bronze'];
+const ALL_MEDALS=['blue','gold','silver','bronze'], MEDAL_NAMES={blue:'Blue: you hold the WR',gold:'Gold: beat the planning bot',silver:'Silver: within 10% of the planning bot',bronze:'Bronze: finished'};
 async function api(path,body){
  const r=await fetch(API+path,{method:body?'POST':'GET',headers:Object.assign({'content-type':'application/json'},TOKEN?{authorization:'Bearer '+TOKEN}:{}),body:body?JSON.stringify(body):undefined});
  const d=await r.json().catch(()=>({error:'Bad reply from the server.'}));
@@ -140,8 +151,9 @@ $('blogout').onclick=async()=>{try{await api('/api/logout',{});}catch(e){} TOKEN
 
 let ME=null;
 function meLine(m){ME=m;
- $('meline').innerHTML='<b class=you>'+escH(m.name)+'</b> · rating <b>'+num(m.rating)+'</b> · '+MEDALS.map(k=>'<span class="medal '+k+'"></span>'+num(m.medals[k])).join(' ')+
+ $('meline').innerHTML='<b class=you>'+escH(m.name)+'</b> · rating <b>'+num(m.rating)+'</b> · '+ALL_MEDALS.map(k=>'<button class="mbtn" data-medal="'+k+'" title="'+MEDAL_NAMES[k]+' (click for your times)"><span class="medal '+k+'"></span>'+num(m.medals[k])+'</button>').join('')+
   (m.flagged?' · <span class=flag>flagged for review</span>':'')+' ';
+ $('meline').querySelectorAll('.mbtn').forEach(b=>b.onclick=()=>openTimes(b.dataset.medal));
  $('tadmin').style.display=m.admin?'':'none';}
 function enter(m){$('login').style.display='none';$('app').style.display='block';meLine(m);setTab('play');}
 
@@ -153,14 +165,22 @@ function setTab(t){tab=t;document.querySelectorAll('#top .tabs .btn').forEach(b=
 document.querySelectorAll('#top .tabs .btn').forEach(b=>b.onclick=()=>setTab(b.dataset.t));
 
 // ---------- play ----------
-const MODE_NAMES={easy:'Easy',medium:'Medium',hard:'Hard',expert:'Expert',starred:'★ Starred'};
+const MODE_NAMES={easy:'Easy',medium:'Medium',hard:'Hard',expert:'Expert',starred:'★ Starred',pick:'Picked'};
 const pv=new View($('pc'));
 const held={};
 const KEYMAP={ArrowUp:'u',KeyW:'u',ArrowDown:'d',KeyS:'d',ArrowLeft:'l',KeyA:'l',ArrowRight:'r',KeyD:'r'};
 addEventListener('keydown',e=>{if(tab!=='play'||e.target.tagName==='INPUT')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
  if(e.code==='KeyR'&&(P.state==='run'||P.state==='count'||P.state==='done')){cancelAuto();restartTry(P.state==='done');}
  if((e.code==='KeyN'||e.code==='Enter')&&P.state!=='load')nextPuzzle();
- if(e.code==='KeyB'&&P.state!=='load')backPuzzle();});
+ if(e.code==='KeyB'&&P.state!=='load')backPuzzle();
+ if(e.code==='KeyP')togglePause();});
+// P pauses: the game just stops ticking (the server only sees keys per tick, so nothing changes)
+function togglePause(){
+ if(P.paused){P.paused=false;if(P.state==='count')P.countEnd=performance.now()+P.countLeft;P.acc=0;$('count').style.fontSize='';return;}
+ if(P.state!=='run'&&P.state!=='count')return;
+ P.paused=true;P.countLeft=P.countEnd-performance.now();for(const k in held)held[k]=false;
+}
+addEventListener('blur',()=>{if(P.state==='run')togglePause();});
 $('bnext').onclick=()=>{if(P.state!=='load')nextPuzzle();};
 $('bback').onclick=()=>{if(P.state!=='load')backPuzzle();};
 $('bstar').onclick=async()=>{if(!P.d||!P.d.seed)return;
@@ -178,7 +198,7 @@ function action(){const dx=(held.r?1:0)-(held.l?1:0),dy=(held.d?1:0)-(held.u?1:0
 
 const P={state:'load'};
 function drawModes(d){
- $('modes').innerHTML=Object.keys(MODE_NAMES).filter(m=>ME.modes.includes(m)).map(m=>'<button class="btn'+(m===d.mode?' on':'')+'" data-m="'+m+'">'+MODE_NAMES[m]+' <small>'+(d.left?num(d.left[m]):'')+' left</small></button>').join('');
+ $('modes').innerHTML=Object.keys(MODE_NAMES).filter(m=>ME.modes.includes(m)&&(m!=='pick'||d.mode==='pick')).map(m=>'<button class="btn'+(m===d.mode?' on':'')+'" data-m="'+m+'">'+MODE_NAMES[m]+' <small>'+(d.left?num(d.left[m]):'')+' left</small></button>').join('');
  $('modes').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(b.dataset.m===P.d.mode)return;P.state='load';
   try{showPuzzle(await api('/api/mode',{mode:b.dataset.m}));}catch(e){msg(e.message);}});
 }
@@ -201,6 +221,7 @@ function tryLine(){const d=P.d,s=d.session;
  $('pRec').innerHTML='<span style="color:var(--gold)">WR</span> <b>'+(d.wr?sec(d.wr.ticks)+'</b> by '+escH(d.wr.by):'—</b> (be the first!)')+' · fastest bot '+sec(d.fastestBot)+' · planning bot '+sec(d.bots.search);}
 // every try is started on the server first; R reports the try so far, then starts a new one
 async function restartTry(fresh){
+ P.paused=false;$('count').style.fontSize='';
  if(!fresh&&P.tryId&&P.state!=='done'){const keys=P.keys,id=P.tryId;P.tryId=null;
   try{const r=await api('/api/finish',{tryId:id,keys,end:'restart'});P.d.session=r.session;}catch(e){}}
  const d=P.d;P.sim=new BSim(JSON.parse(JSON.stringify(d.map)));P.p=P.sim.addBall(1);
@@ -211,6 +232,7 @@ async function restartTry(fresh){
  try{const id=(await api('/api/start',{})).tryId;if(no===P.tryNo)P.tryId=id;}catch(e){if(no===P.tryNo){msg(e.message);P.state='load';}}
 }
 function stepPlay(dt){
+ if(P.paused){$('count').style.display='block';$('count').style.fontSize='48px';$('count').textContent='Paused · P to resume';return;}
  if(P.state==='count'){const left=P.countEnd-performance.now();
   $('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/667);
   if(left<=0&&P.tryId){P.state='run';P.acc=0;}return;}
@@ -231,11 +253,11 @@ async function finishTry(res){
  P.d.session=r.session;P.d.record=r.record;P.d.wr=r.wr;if(r.best){P.d.yourBest=r.ticks;}tryLine();
  const c=$('card'),b=P.d.bots;
  const medal=MEDALS.includes(r.medal)?r.medal:null;
- const head=r.newWR?'<span style="color:var(--gold)">New WR!</span>':r.newRecord?'New record!':r.end==='arrived'?(medal?'<span class="medal '+medal+'" style="width:20px;height:20px"></span> '+MEDAL_TEXT[medal]:'Made it'):r.end==='pop'?'Popped on a spike':r.end==='timeout'?'Out of time':'Restarted';
+ const head=r.newWR?'<span class="medal blue" style="width:20px;height:20px"></span> <span style="color:#4a9bff">New WR!</span>':r.newRecord?'New record!':r.end==='arrived'?(medal?'<span class="medal '+medal+'" style="width:20px;height:20px"></span> '+MEDAL_TEXT[medal]:'Made it'):r.end==='pop'?'Popped on a spike':r.end==='timeout'?'Out of time':'Restarted';
  c.innerHTML='<h2>'+head+'</h2>'+
   '<div class=you>This try: '+(r.end==='arrived'?sec(r.ticks):'—')+(r.best?' (personal best)':'')+'</div>'+
   '<div>Your best: '+sec(P.d.yourBest)+' · <span style="color:var(--gold)">WR</span> '+(r.wr?sec(r.wr.ticks)+' by '+escH(r.wr.by):'—')+'</div>'+
-  '<div style="color:#ff6b6b">Planning bot: '+sec(b.search)+'</div>'+
+  '<div style="color:#ff6b6b">Planning bot: '+sec(b.search)+(r.end==='arrived'&&r.ticks===b.search?' <b>(tied)</b>':'')+'</div>'+
   (res!==r.end&&r.end!=='restart'?'<div class=dim>(the server\'s replay disagreed with your browser; the server counts)</div>':'')+
   (r.end==='arrived'?'<div class=dim style="margin-top:6px">Next puzzle in a moment · <b>R</b> try again · <b>N</b> go now</div><div class="bar"><i></i></div>'
    :'<div class=dim style="margin-top:6px">Trying again… <b>N</b> skip</div>');
@@ -269,22 +291,47 @@ async function backPuzzle(){
  try{showPuzzle(await api('/api/back',{}));}catch(e){msg(e.message);P.state='done';}
 }
 
+// ---------- your times against the WR (click a medal) ----------
+let TIMES=null,TFILTER='all';
+async function openTimes(medal){
+ TFILTER=medal||'all';$('times').style.display='block';$('ttable').innerHTML='<tr><td class=dim>Loading…</td></tr>';
+ try{TIMES=await api('/api/mytimes');drawTimes();}catch(e){$('ttable').innerHTML='<tr><td>'+escH(e.message)+'</td></tr>';}
+}
+function drawTimes(){
+ const has=t=>TFILTER==='all'||(TFILTER==='blue'?t.holdsWR:t.medal===TFILTER);
+ $('tchips').innerHTML=['all',...ALL_MEDALS].map(k=>'<button class="btn'+(k===TFILTER?' on':'')+'" data-f="'+k+'">'+(k==='all'?'All':'<span class="medal '+k+'"></span>'+k[0].toUpperCase()+k.slice(1))+
+  ' <small class=dim>'+TIMES.filter(t=>k==='all'||(k==='blue'?t.holdsWR:t.medal===k)).length+'</small></button>').join('');
+ $('tchips').querySelectorAll('button').forEach(b=>b.onclick=()=>{TFILTER=b.dataset.f;drawTimes();});
+ const rows=TIMES.filter(has);
+ $('ttable').innerHTML='<tr><th>Puzzle</th><th>Mode</th><th>Medal</th><th>Your best</th><th>WR</th><th>You vs WR</th><th>Planning bot</th></tr>'+
+  (rows.length?rows.map(t=>{const gap=t.wr?(t.you-t.wr.ticks)/60:null;
+   return '<tr><td>'+num(t.seed)+(t.starred?' <span style="color:var(--gold)">★</span>':'')+'</td><td>'+(MODE_NAMES[t.mode]||'')+'</td><td>'+(t.holdsWR?'<span class="medal blue"></span>':'')+(MEDALS.includes(t.medal)?'<span class="medal '+t.medal+'"></span>':'')+'</td><td>'+sec(t.you)+'</td><td>'+
+    (t.wr?sec(t.wr.ticks)+' <span class=dim>'+escH(t.wr.by)+'</span>':'—')+'</td><td>'+(gap==null?'—':t.holdsWR?'<b class=ahead>WR</b>':'<span class=behind>+'+gap.toFixed(2)+' s ('+Math.round(gap*60/t.wr.ticks*100)+'%)</span>')+'</td><td>'+sec(t.bot)+(t.bot!=null&&t.you===t.bot?' <b>(tied)</b>':'')+'</td></tr>';}).join('')
+  :'<tr><td colspan=7 class=dim>No puzzles here yet.</td></tr>');
+}
+$('tclose').onclick=()=>{$('times').style.display='none';};
+addEventListener('keydown',e=>{if(e.code==='Escape')$('times').style.display='none';});
+
 // ---------- leaderboard ----------
 async function drawBoard(){
  const d=await api('/api/leaderboard');
- $('tplayers').innerHTML='<tr><th>#</th><th>Player</th><th>Rating</th><th>Medals</th><th>WRs</th><th>Puzzles finished</th></tr>'+
+ $('tplayers').innerHTML='<tr><th>#</th><th>Player</th><th>Rating</th><th>Medals</th><th>Puzzles finished</th></tr>'+
   (d.players.length?d.players.map((p,i)=>'<tr><td>'+(i+1)+'</td><td'+(ME&&p.name===ME.name?' class=you':'')+'>'+escH(p.name)+(p.flagged?' <span class=flag title="flagged for review">⚑</span>':'')+'</td><td><b>'+num(p.rating)+'</b></td><td>'+
-   MEDALS.map(k=>'<span class="medal '+k+'"></span>'+num(p[k])).join(' ')+'</td><td>'+num(p.wrs)+'</td><td>'+num(p.finished)+' of '+num(p.sessions)+'</td></tr>').join(''):'<tr><td colspan=6 class=dim>Nobody yet. Play 3 puzzles to be first.</td></tr>');
- $('tpuzzles').innerHTML='<tr><th>Puzzle</th><th>Mode</th><th>Rating</th><th>Players</th><th>Tries each</th><th>Restarts each</th><th>Within 5% of record</th><th>WR</th><th>Planning bot</th></tr>'+
-  (d.puzzles.length?d.puzzles.slice(0,50).map(p=>'<tr><td>'+num(p.seed)+'</td><td>'+(MODE_NAMES[p.mode]||'')+'</td><td><b>'+num(p.rating)+'</b></td><td>'+num(p.players)+'</td><td>'+p.triesPer.toFixed(1)+'</td><td>'+p.restartsPer.toFixed(1)+'</td><td>'+(p.nearRecord==null?'—':Math.round(p.nearRecord*100)+'%')+'</td><td>'+(p.wr?p.wr.secs.toFixed(2)+' s <span class=dim>'+escH(p.wr.by)+'</span>':'—')+'</td><td>'+p.botSecs.toFixed(2)+' s</td></tr>').join(''):'<tr><td colspan=9 class=dim>No results yet.</td></tr>');
+   ALL_MEDALS.map(k=>'<span class="medal '+k+'" title="'+MEDAL_NAMES[k]+'"></span>'+num(k==='blue'?p.wrs:p[k])).join(' ')+'</td><td>'+num(p.finished)+' of '+num(p.sessions)+'</td></tr>').join(''):'<tr><td colspan=6 class=dim>Nobody yet. Play 3 puzzles to be first.</td></tr>');
+ $('tpuzzles').innerHTML='<tr><th>Puzzle</th><th>Mode</th><th>Rating</th><th>Players</th><th>Tries each</th><th>Restarts each</th><th>Typical restart</th><th>Within 5% of record</th><th>WR</th><th>Planning bot</th></tr>'+
+  (d.puzzles.length?d.puzzles.slice(0,50).map(p=>'<tr class="pickrow" data-seed="'+num(p.seed)+'" title="Click to play this puzzle" style="cursor:pointer"><td>'+num(p.seed)+' ▶</td><td>'+(MODE_NAMES[p.mode]||'')+'</td><td><b>'+num(p.rating)+'</b></td><td>'+num(p.players)+'</td><td>'+p.triesPer.toFixed(1)+'</td><td>'+p.restartsPer.toFixed(1)+'</td><td>'+(p.typicalRestart==null?'—':p.typicalRestart.toFixed(2)+' s')+'</td><td>'+(p.nearRecord==null?'—':Math.round(p.nearRecord*100)+'%')+'</td><td>'+(p.wr?p.wr.secs.toFixed(2)+' s <span class=dim>'+escH(p.wr.by)+'</span>':'—')+'</td><td>'+p.botSecs.toFixed(2)+' s</td></tr>').join(''):'<tr><td colspan=10 class=dim>No results yet.</td></tr>');
 }
+
+// click a puzzle in the table to play it
+document.addEventListener('click',async e=>{const row=e.target.closest&&e.target.closest('.pickrow');if(!row)return;
+ try{const d=await api('/api/pick',{seed:+row.dataset.seed});setTab('play');showPuzzle(d);}catch(err){alert(err.message);}});
 
 // ---------- admin ----------
 async function drawAdmin(){
  const ps=await api('/api/admin/players');
  const act=(k,a,label)=>'<button class="btn" style="padding:2px 8px" data-k="'+escH(k)+'" data-a="'+a+'">'+label+'</button>';
  $('tadminp').innerHTML='<tr><th>Player</th><th>Status</th><th>Rating</th><th>Puzzles</th><th>Tries</th><th>Restarts</th><th>Deaths</th><th>Flags</th><th>Last seen</th><th>Actions</th></tr>'+
-  ps.map(p=>'<tr><td>'+escH(p.name)+(p.admin?' <span class=dim>(admin)</span>':'')+'</td><td>'+[p.banned?'banned':'',p.excluded?'excluded':'',p.trusted?'trusted':'',p.counted?'counted':'not counted'].filter(Boolean).join(', ')+'</td><td>'+num(p.rating)+'</td><td>'+num(p.finished)+'/'+num(p.sessions)+'</td><td>'+num(p.tries)+'</td><td>'+num(p.restarts)+' / '+num(p.instant)+' / '+num(p.idle)+'</td><td>'+num(p.deaths)+'</td><td class=flag style="white-space:normal;min-width:180px">'+p.flags.map(f=>escH(f.reason)).join('<br>')+'</td><td>'+(p.last?new Date(p.last).toLocaleString():'—')+'</td><td>'+
+  ps.map(p=>'<tr><td>'+escH(p.name)+(p.admin?' <span class=dim>(admin)</span>':'')+'</td><td>'+[p.banned?'banned':'',p.excluded?'excluded':'',p.trusted?'trusted':'',p.counted?'counted':'not counted'].filter(Boolean).join(', ')+'</td><td>'+num(p.rating)+'</td><td>'+num(p.finished)+'/'+num(p.sessions)+'</td><td>'+num(p.tries)+'</td><td>'+num(p.restarts)+' · '+num(p.idle)+' · '+num(p.idleRun&&p.idleRun.n)+' in '+Math.round(num(p.idleRun&&p.idleRun.span)/1000)+' s · '+num(p.fastVsNorm&&p.fastVsNorm.fast)+'/'+num(p.fastVsNorm&&p.fastVsNorm.of)+'</td><td>'+num(p.deaths)+'</td><td class=flag style="white-space:normal;min-width:180px">'+p.flags.map(f=>escH(f.reason)).join('<br>')+'</td><td>'+(p.last?new Date(p.last).toLocaleString():'—')+'</td><td>'+
    (p.excluded?act(p.key,'include','Include'):act(p.key,'exclude','Exclude'))+' '+(p.banned?act(p.key,'unban','Unban'):act(p.key,'ban','Ban'))+' '+
    (p.flags.length?act(p.key,'clearflags','Clear flags'):p.trusted?act(p.key,'untrust','Untrust'):'')+' '+act(p.key,'delete','Delete data')+'</td></tr>').join('');
  $('tadminp').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
