@@ -517,5 +517,5 @@ module.exports = function startArena(ctx) {
   server.requestTimeout = 15e3; server.headersTimeout = 10e3; // don't let slow requests hold connections open
   rebuild();
   server.listen(ctx.port, ctx.host, () => console.log(`arena: http://${ctx.host}:${ctx.port}/api/health`));
-  return { server, users, rebuild };
+  return { server, users, rebuild, puzzleMode, MODES };
 };

@@ -36,6 +36,8 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
   <span id="pTry" class="dim"></span>
   <span class="dim">Arrows or WASD · touch the centre of the <span style="color:#3f3">green cross</span> (any speed) · R retries · N next · B back</span>
  </div>
+ <div class="hud" style="padding-top:0" id="pModes"></div>
+ <div id="pMsg" style="display:none;padding:12px 16px;color:#ddd"></div>
  <div class="hud" style="padding-top:0">
   <select id="pList"><option value="order">All puzzles in order</option><option value="slow">Slow ones (25%+ behind the planning bot)</option></select>
   <button class="btn2" id="bback">◀ Back (B)</button><button class="btn2" id="bnext">Skip ▶ (N)</button>
@@ -47,6 +49,7 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 <div id="watch" class="tab">
  <div class="hud">
   <span>Puzzle <b id="wSeed" class="big">–</b></span><span class="big" id="wTime">0.00 s</span>
+  <select id="wMode"><option value="all">All puzzles</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option><option value="expert">Expert</option></select>
   <select id="wSpeed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
   <span id="wPick"></span>
  </div>
@@ -225,12 +228,23 @@ function action(){const dx=(held.r?1:0)-(held.l?1:0),dy=(held.d?1:0)-(held.u?1:0
  return ACTIONS.findIndex(([a,b])=>a===dx&&b===dy);}
 
 const P={state:'load'};
+// mode buttons: which puzzles Play gives you (each mode remembers your place)
+const MODE_NAMES={all:'All',easy:'Easy',medium:'Medium',hard:'Hard',expert:'Expert'};
+function drawModes(d){
+ $('pModes').innerHTML=Object.keys(MODE_NAMES).map(m=>'<button class="btn2" data-m="'+m+'" style="'+(m===d.mode?'background:#444;color:#fff;font-weight:600;border-color:#aaa':'')+'">'+MODE_NAMES[m]+
+  ' <small style="color:#888">'+(d.left&&d.left[m]!=null?d.left[m]+' left':'')+'</small></button>').join(' ');
+ $('pModes').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(b.dataset.m===d.mode&&P.list!=='slow')return;
+  await fetch('mode',{method:'POST',body:JSON.stringify({mode:b.dataset.m})});$('pList').value=P.list='order';newPuzzle();});
+}
 async function newPuzzle(seed){
  cancelAuto();P.state='load';$('card').style.display='none';
  if(seed===undefined&&P.list==='slow'&&P.slow&&P.slow[P.slowAt])seed=P.slow[P.slowAt].seed;
  const d=await (await fetch('current'+(seed?'?seed='+seed:''))).json();
- P.d=d;pv.setMap(d.map.tiles,d.tile,d.goal,d.start);
- $('pSeed').textContent=d.seed;
+ P.d=d;drawModes(d);
+ if(!d.seed){$('pMsg').style.display='block';$('pMsg').textContent=d.message;$('pc').style.display='none';$('pSeed').textContent='–';return;}
+ $('pMsg').style.display='none';$('pc').style.display='';
+ pv.setMap(d.map.tiles,d.tile,d.goal,d.start);
+ $('pSeed').textContent=d.seed+(d.puzzleMode?' ('+MODE_NAMES[d.puzzleMode]+')':'');
  $('pTry').textContent=(P.list==='slow'?'slow one '+(P.slowAt+1)+' of '+P.slow.length+' · ':'')+(d.retry?'retry · ':'try '+(d.fails+1)+' of '+d.maxFails+' · ')+'your best '+(d.yourBest?secs(d.yourBest):'—');
  $('bback').disabled=P.list==='slow'?P.slowAt===0:!d.prev;
  $('bnext').textContent=(d.retry||P.list==='slow'?'Next':'Skip')+' ▶ (N)';
@@ -299,11 +313,12 @@ function drawPlay(){
 // ---------- watch: bots on every ready puzzle, round and round ----------
 const wv=new View($('wc'));
 const W={d:null,t:0,acc:0,endAt:0};
+$('wMode').onchange=()=>{W.d=null;nextWatch();};
 async function nextWatch(){
- const r=await fetch('watch?seed='+(W.d?W.d.seed:0));
+ const r=await fetch('watch?seed='+(W.d?W.d.seed:0)+'&mode='+$('wMode').value);
  if(r.status!==200){$('wInfo').textContent='The bots are still working on the first puzzles…';setTimeout(nextWatch,5000);return;}
  W.d=await r.json();W.t=0;W.acc=0;W.endAt=0;
- wv.setMap(W.d.tiles,W.d.tile,W.d.goal,W.d.start);$('wSeed').textContent=W.d.seed;
+ wv.setMap(W.d.tiles,W.d.tile,W.d.goal,W.d.start);$('wSeed').textContent=W.d.seed+(W.d.puzzleMode?' ('+({easy:'Easy',medium:'Medium',hard:'Hard',expert:'Expert'})[W.d.puzzleMode]+')':'');
  const d=W.d;
  $('wInfo').innerHTML=BOTS.filter(b=>d[b.k]).map(b=>'<span style="color:'+b.col+'">'+b.name+': '+(b.k==='you'?secs(d.you.ticks):fmt(d[b.k]))+'</span>').join(' · ')+
   (d.you?'':' · <span class=dim>you haven\'t finished this one yet</span>')+

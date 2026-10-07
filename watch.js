@@ -124,7 +124,7 @@ const ready = new Set(fs.readdirSync(BOTS).map((f) => parseInt(f, 10)).filter((s
 const busy = new Set();
 const botFile = (s) => path.join(BOTS, s + '.json');
 function feed(w) {
-  for (let s = FIRST; s <= human.next + AHEAD; s++) {
+  for (let s = FIRST; s <= Math.max(human.next, ...Object.values(human.nextBy)) + AHEAD; s++) {
     if (ready.has(s) || busy.has(s) || !playable(s)) continue;
     busy.add(s); w.idle = false; w.postMessage(s); return;
   }
@@ -186,11 +186,34 @@ function startWorkers() {
 }
 const wake = () => workers.forEach((w) => w.idle && feed(w));
 
+// ---------- modes on the private page (easy to expert, the same rules as the puzzle site) ----------
+// "all" is the original run through every puzzle in order; each mode keeps its own place
+let arena = null;
+const MODES = ['easy', 'medium', 'hard', 'expert'];
+const modeOf = (s) => (arena ? arena.puzzleMode(s) : null);
+const inMode = (s, m) => ready.has(s) && playable(s) && (m === 'all' || modeOf(s) === m);
+// in a mode, puzzles you've already finished are skipped (they're under All, Back and the slow list)
+const fresh = (s, m) => inMode(s, m) && !human.best[s];
+function modeNext(m) {
+  if (m === 'all') return human.next;
+  let best = null;
+  for (const s of ready) if (s >= human.nextBy[m] && fresh(s, m) && (best === null || s < best)) best = s;
+  return best;
+}
+function advance(m, seed) {
+  if (m === 'all') { human.next++; skipUnplayable(); } else human.nextBy[m] = seed + 1;
+  human.fails = 0;
+}
+const modesLeft = () => ({ all: [...ready].filter((s) => s >= human.next && playable(s)).length,
+  ...Object.fromEntries(MODES.map((m) => [m, [...ready].filter((s) => s >= human.nextBy[m] && fresh(s, m)).length])) });
+
 // ---------- the player's runs ----------
 // next: the puzzle you're on; fails: failed tries on it; best[seed]: your fastest arrival;
 // attempts: every finished try
 const human = fs.existsSync(HUMAN) ? JSON.parse(fs.readFileSync(HUMAN, 'utf8')) : importOld();
 function skipUnplayable() { while (!playable(human.next)) { human.next++; human.fails = 0; } }
+human.mode = human.mode || 'all';
+human.nextBy = human.nextBy || Object.fromEntries(['easy', 'medium', 'hard', 'expert'].map((m) => [m, FIRST]));
 skipUnplayable();
 function importOld() {
   const h = { next: FIRST, fails: 0, best: {}, attempts: [] };
@@ -208,8 +231,8 @@ function saveHuman() { fs.writeFileSync(HUMAN + '.tmp', JSON.stringify(human)); 
 
 // a try on the current puzzle, or a retry of an earlier one (which only ever improves your best time)
 function submit(body) {
-  const seed = body.seed, ks = body.keys, retry = seed !== human.next;
-  if (retry && !(seed < human.next && ready.has(seed) && playable(seed))) throw new Error('not a puzzle you can play');
+  const cur = modeNext(human.mode), seed = body.seed, ks = body.keys, retry = seed !== cur;
+  if (retry && !(ready.has(seed) && playable(seed))) throw new Error('not a puzzle you can play');
   if (!Array.isArray(ks) || ks.length > N.MAX_TICKS || !ks.every((k) => Number.isInteger(k) && k >= 0 && k <= 8)) throw new Error('bad keys');
   const t = task(seed);
   const run = record(t, (i) => (i < ks.length ? ks[i] : undefined));
@@ -218,9 +241,9 @@ function submit(body) {
   const isBest = run.result === 'arrived' && (!old || run.ticks < old.ticks);
   if (isBest) human.best[seed] = { ticks: run.ticks, frames: run.frames };
   human.attempts.push({ seed, result: run.result, ticks: run.ticks, at: Date.now(), browser: body.result, retry });
-  if (!retry && (run.result === 'arrived' || ++human.fails >= MAX_FAILS)) { human.next++; human.fails = 0; skipUnplayable(); }
+  if (!retry && (run.result === 'arrived' || ++human.fails >= MAX_FAILS)) advance(human.mode, seed);
   saveHuman(); wake();
-  return { result: run.result, ticks: run.ticks, best: isBest, next: human.next, bots: bots(seed) };
+  return { result: run.result, ticks: run.ticks, best: isBest, next: modeNext(human.mode), bots: bots(seed) };
 }
 
 function bots(seed) {
@@ -289,14 +312,26 @@ http.createServer((req, res) => {
     if (u.pathname.startsWith('/engine/') && ENGINE[u.pathname.slice(8)])
       return send(res, 200, fs.readFileSync(path.join(__dirname, 'engine', u.pathname.slice(8))), 'text/javascript');
     if (u.pathname === '/current') {
-      // the puzzle you're on, or with ?seed= an earlier one to retry
-      const s = seed && seed < human.next && ready.has(seed) && playable(seed) ? seed : human.next;
-      const t = task(s), m = getMap(t.key);
-      return send(res, 200, { seed: s, next: human.next, retry: s !== human.next, fails: s === human.next ? human.fails : 0, maxFails: MAX_FAILS,
+      // the puzzle you're on in this mode, or with ?seed= another one to retry
+      const mode = human.mode, cur = modeNext(mode);
+      const s = seed && ready.has(seed) && playable(seed) ? seed : cur;
+      if (s === null) return send(res, 200, { seed: null, mode, left: modesLeft(),
+        message: `You've done every ${mode} puzzle that's ready. Pick another mode, or wait for the bots to work through more.` });
+      const t = task(s), m = getMap(t.key), same = (x) => inMode(x, mode);
+      return send(res, 200, { seed: s, next: cur, retry: s !== cur, fails: s === cur ? human.fails : 0, maxFails: MAX_FAILS,
+        mode, puzzleMode: modeOf(s), left: modesLeft(),
         map: m, tile: N.TILE, touchR: N.BALL_R, goal: t.goal, start: t.start, maxTicks: N.MAX_TICKS, bots: bots(s), ghosts: ghostsOf(s),
         yourBest: human.best[s] ? human.best[s].ticks : null,
-        prev: [...ready].filter((x) => x < s && playable(x)).sort((a, b) => b - a)[0] || null,
-        after: s === human.next ? null : [...ready].filter((x) => x > s && x < human.next && playable(x)).sort((a, b) => a - b)[0] || human.next });
+        prev: [...ready].filter((x) => x < s && same(x)).sort((a, b) => b - a)[0] || null,
+        after: s === cur ? null : [...ready].filter((x) => x > s && (cur === null || x < cur) && same(x)).sort((a, b) => a - b)[0] || cur });
+    }
+    if (u.pathname === '/mode' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 1e3) req.destroy(); });
+      req.on('end', () => { try { const m = JSON.parse(body).mode;
+        if (m !== 'all' && !MODES.includes(m)) throw new Error('unknown mode');
+        human.mode = m; human.fails = 0; saveHuman(); wake(); send(res, 200, { mode: m }); } catch (e) { send(res, 400, { error: e.message }); } });
+      return;
     }
     if (u.pathname === '/restart' && req.method === 'POST') {
       // an R press on the private page: logged so the try count is honest (it can't change anything else)
@@ -308,8 +343,8 @@ http.createServer((req, res) => {
       return;
     }
     if (u.pathname === '/skip' && req.method === 'POST') {
-      human.next++; human.fails = 0; skipUnplayable(); saveHuman(); wake();
-      return send(res, 200, { next: human.next });
+      const cur = modeNext(human.mode); if (cur !== null) advance(human.mode, cur); saveHuman(); wake();
+      return send(res, 200, { next: modeNext(human.mode) });
     }
     if (u.pathname === '/slow') {
       // puzzles where your best is 25% or more slower than the planning bot, worst first
@@ -322,13 +357,14 @@ http.createServer((req, res) => {
     }
     if (u.pathname === '/watch') {
       // the ready puzzle after `seed`, wrapping round
-      const list = [...ready].sort((a, b) => a - b);
+      const wm = u.searchParams.get('mode') || 'all';
+      const list = [...ready].filter((s) => wm === 'all' || (playable(s) && modeOf(s) === wm)).sort((a, b) => a - b);
       if (!list.length) return send(res, 202, { waiting: true });
       const s = list.find((x) => x > (seed || 0)) || list[0];
       const r = JSON.parse(fs.readFileSync(botFile(s), 'utf8')), t = task(s);
       const x = extraOf(s);
       return send(res, 200, { ...r, seed: s, tiles: getMap(t.key).tiles, tile: N.TILE, goal: t.goal, start: t.start,
-        you: human.best[s] || null, fast: x.fast || null, net: x.net || null, guided: x.guided || null });
+        you: human.best[s] || null, fast: x.fast || null, net: x.net || null, guided: x.guided || null, puzzleMode: modeOf(s) });
     }
     if (u.pathname === '/stats') return send(res, 200, stats());
     if (u.pathname === '/learning') return send(res, 200, learning());
@@ -344,7 +380,7 @@ http.createServer((req, res) => {
   console.log(`http://${HOST}:${PORT}/`); startWorkers();
   // the public puzzle server for the GitHub Pages site, on its own port (see arena.js and tunnel.js)
   const botCache = new Map();
-  require('./arena')({ N, record, task, getMap, ready, playable, FIRST, extraOf,
+  arena = require('./arena')({ N, record, task, getMap, ready, playable, FIRST, extraOf,
     ownerBest: (s) => (human.best[s] ? human.best[s].ticks : null),
     botRuns: (s) => {
       if (!ready.has(s)) return null;
