@@ -1,0 +1,5 @@
+node_modules/
+*.err
+base*.json
+search*.json
+s[AB4].json

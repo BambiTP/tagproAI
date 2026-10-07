@@ -1,0 +1,14 @@
+{
+  "name": "tagproai",
+  "version": "0.1.0",
+  "description": "TagPro bot built on search in the real engine (tagpro-local's engine, run headless)",
+  "private": true,
+  "scripts": {
+    "test": "node test-sim.js",
+    "eval": "node eval.js"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "engines": { "node": ">=18" }
+}
