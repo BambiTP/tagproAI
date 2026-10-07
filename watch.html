@@ -142,7 +142,9 @@ class View{
  constructor(cv){this.cv=cv;this.g=cv.getContext('2d');}
  setMap(tiles,tile,goal,start){this.tiles=tiles;this.tile=tile;this.goal=goal;this.start=start;this.layout();}
  layout(){const W=this.tiles.length,H=this.tiles[0].length;
-  this.px=Math.max(8,Math.min(40,Math.floor(Math.min((innerWidth-8)/W,(innerHeight-110)/H))));
+  // fit the room left below the controls (pages have different amounts of controls above the map)
+  const top=this.cv.offsetParent?this.cv.getBoundingClientRect().top+scrollY:110;
+  this.px=Math.max(8,Math.min(40,Math.floor(Math.min((innerWidth-8)/W,(innerHeight-top-12)/H))));
   const bg=document.createElement('canvas');bg.width=W*this.px;bg.height=H*this.px;const g=bg.getContext('2d');
   for(let x=0;x<W;x++)for(let y=0;y<H;y++)tileDraw(g,this.tiles[x][y],x,y,this.px);
   this.bg=bg;this.cv.width=bg.width;this.cv.height=bg.height;}

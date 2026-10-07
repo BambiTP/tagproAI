@@ -58,7 +58,7 @@ th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
  </div>
 
  <div id="play" class="tab on">
-  <div class="hud modes" id="modes"></div>
+  <div class="hud modes"><span id="modes" style="display:flex;flex-wrap:wrap;gap:6px"></span></div>
   <div class="hud">
    <span>Puzzle <b id="pSeed" class="big">–</b></span><span class="big" id="pTime">0.00 s</span>
    <span id="pTry" class="dim"></span>
@@ -83,7 +83,7 @@ th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
  <div id="help" class="tab"><div class="wrap"><div class="panel">
   <h3>How it works</h3>
   <p style="font-size:14px;color:#ddd;line-height:1.6">Each puzzle is a real TagPro map with a start, a starting velocity and a target. Touch the centre of the green cross as fast as you can, at any speed. The faded balls are bots that ran the same puzzle: the <b style="color:#ff4a4a">planning bot</b> tries thousands of key presses ahead in the real physics, the <b style="color:#4a9bff">simple bot</b> just steers at the target, and the <b style="color:#c070e0">network</b> bots learned to drive from the planning bot.</p>
-  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>It's about the best time.</b> Retry a puzzle as often as you like (R), then move on (N). Every puzzle has a record: the fastest time by anyone, bots included.</p>
+  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>It's about the best time.</b> Retry a puzzle as often as you like (R), then move on (N). Every puzzle has a <b style="color:var(--gold)">WR</b>, the fastest time by any player, and you can race the WR holder's run as the gold ghost. The leaderboard counts the WRs each player holds.</p>
   <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Modes</b> sort puzzles by how hard the best time is to reach. At first that comes from the bots: on Easy, just steering at the target is about as fast as careful planning; on Expert, careful planning beats plain steering by 40% or more (or a bot couldn't finish at all). Once 3 players have finished a puzzle, its mode comes from how close players get to the record instead. Each mode keeps its own progress.</p>
   <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Medals:</b> <span class="medal gold"></span>gold for beating the planning bot, <span class="medal silver"></span>silver for finishing within 10% of it, <span class="medal bronze"></span>bronze for finishing.</p>
   <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Rating</b> works like chess, with each puzzle as an opponent, and counts when you move on. Your best time matching the planning bot's is a draw, and half its time is a win. Each try after the first takes 2% off, so retrying pays only when it really improves your time. Moving on without finishing counts as a loss. Every run is checked on the server by replaying your keys in the same physics.</p>
@@ -154,7 +154,9 @@ class View{
  constructor(cv){this.cv=cv;this.g=cv.getContext('2d');}
  setMap(tiles,tile,goal,start){this.tiles=tiles;this.tile=tile;this.goal=goal;this.start=start;this.layout();}
  layout(){const W=this.tiles.length,H=this.tiles[0].length;
-  this.px=Math.max(8,Math.min(40,Math.floor(Math.min((innerWidth-8)/W,(innerHeight-110)/H))));
+  // fit the room left below the controls (pages have different amounts of controls above the map)
+  const top=this.cv.offsetParent?this.cv.getBoundingClientRect().top+scrollY:110;
+  this.px=Math.max(8,Math.min(40,Math.floor(Math.min((innerWidth-8)/W,(innerHeight-top-12)/H))));
   const bg=document.createElement('canvas');bg.width=W*this.px;bg.height=H*this.px;const g=bg.getContext('2d');
   for(let x=0;x<W;x++)for(let y=0;y<H;y++)tileDraw(g,this.tiles[x][y],x,y,this.px);
   this.bg=bg;this.cv.width=bg.width;this.cv.height=bg.height;}
@@ -180,16 +182,24 @@ const fmt=r=>!r?'still computing':r.result==='arrived'?secs(r.ticks):r.result===
 
 
 
+// the world-record holder's run, as one more ghost (public page only)
+BOTS.push({k:'wr',name:'WR',col:'#f5c542'});
+
 // ---------- server address and requests ----------
 let API=null, TOKEN=null;
 try{TOKEN=localStorage.getItem('tpToken');}catch(e){}
+// the server is only ever the Cloudflare tunnel published in the gist (or a local one when testing), so a
+// link can't point the login form at someone else's server
+const TUNNEL=/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/, LOCAL=/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 async function findServer(){
- const q=new URLSearchParams(location.search).get('api');if(q)return q.replace(/\/$/,'');
+ const q=new URLSearchParams(location.search).get('api');
+ if(q&&LOCAL.test(q)&&LOCAL.test(location.origin))return q;
  try{const g=await (await fetch('https://api.github.com/gists/'+GIST,{cache:'no-store'})).json();
-  return JSON.parse(g.files[GIST_FILE].content).url.replace(/\/$/,'');}catch(e){}
- try{return (await (await fetch('backend.json?'+Date.now())).json()).url;}catch(e){}
+  const url=JSON.parse(g.files[GIST_FILE].content).url;if(TUNNEL.test(url))return url;}catch(e){}
  return null;
 }
+const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0;};
+const MEDALS=['gold','silver','bronze'];
 async function api(path,body){
  const r=await fetch(API+path,{method:body?'POST':'GET',headers:Object.assign({'content-type':'application/json'},TOKEN?{authorization:'Bearer '+TOKEN}:{}),body:body?JSON.stringify(body):undefined});
  const d=await r.json().catch(()=>({error:'Bad reply from the server.'}));
@@ -212,7 +222,7 @@ $('blogout').onclick=async()=>{try{await api('/api/logout',{});}catch(e){} TOKEN
 
 let ME=null;
 function meLine(m){ME=m;
- $('meline').innerHTML='<b class=you>'+escH(m.name)+'</b> · rating <b>'+m.rating+'</b> · '+['gold','silver','bronze'].map(k=>'<span class="medal '+k+'"></span>'+m.medals[k]).join(' ')+
+ $('meline').innerHTML='<b class=you>'+escH(m.name)+'</b> · rating <b>'+num(m.rating)+'</b> · '+MEDALS.map(k=>'<span class="medal '+k+'"></span>'+num(m.medals[k])).join(' ')+
   (m.flagged?' · <span class=flag>flagged for review</span>':'')+' ';
  $('tadmin').style.display=m.admin?'':'none';}
 function enter(m){$('login').style.display='none';$('app').style.display='block';meLine(m);setTab('play');}
@@ -250,7 +260,7 @@ function action(){const dx=(held.r?1:0)-(held.l?1:0),dy=(held.d?1:0)-(held.u?1:0
 
 const P={state:'load'};
 function drawModes(d){
- $('modes').innerHTML=ME.modes.map(m=>'<button class="btn'+(m===d.mode?' on':'')+'" data-m="'+m+'">'+MODE_NAMES[m]+' <small>'+(d.left?d.left[m]:'')+' left</small></button>').join('');
+ $('modes').innerHTML=Object.keys(MODE_NAMES).filter(m=>ME.modes.includes(m)).map(m=>'<button class="btn'+(m===d.mode?' on':'')+'" data-m="'+m+'">'+MODE_NAMES[m]+' <small>'+(d.left?num(d.left[m]):'')+' left</small></button>').join('');
  $('modes').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(b.dataset.m===P.d.mode)return;P.state='load';
   try{showPuzzle(await api('/api/mode',{mode:b.dataset.m}));}catch(e){msg(e.message);}});
 }
@@ -270,7 +280,7 @@ const sec=t=>t==null?'—':(t/60).toFixed(2)+' s';
 function tryLine(){const d=P.d,s=d.session;
  $('pTry').textContent=(d.mode==='starred'?MODE_NAMES[d.puzzleMode]+' · ':'')+(d.practice?'practice (already scored) · ':'')+'tries '+s.tries+' · restarts '+s.restarts+' · deaths '+s.deaths+' · your best '+sec(d.yourBest);
  $('bnext').textContent=(s.best!=null||d.practice?'Next':'Skip')+' ▶ (N)';
- $('pRec').innerHTML='record <b>'+(d.record?sec(d.record.ticks)+'</b> by '+(d.record.bot?'the ':'')+escH(d.record.by):'—</b>')+' · planning bot '+sec(d.bots.search);}
+ $('pRec').innerHTML='<span style="color:var(--gold)">WR</span> <b>'+(d.wr?sec(d.wr.ticks)+'</b> by '+escH(d.wr.by):'—</b> (be the first!)')+' · fastest bot '+sec(d.fastestBot)+' · planning bot '+sec(d.bots.search);}
 // every try is started on the server first; R reports the try so far, then starts a new one
 async function restartTry(fresh){
  if(!fresh&&P.tryId&&P.state!=='done'){const keys=P.keys,id=P.tryId;P.tryId=null;
@@ -300,12 +310,13 @@ async function finishTry(res){
  P.state='done';const id=P.tryId,no=P.tryNo;P.tryId=null;let r;
  try{r=await api('/api/finish',{tryId:id,keys:P.keys,end:res});}catch(e){msg(e.message);return;}
  if(no!==P.tryNo||P.state!=='done')return; // R was pressed while this was on its way: don't cover the new try
- P.d.session=r.session;P.d.record=r.record;if(r.best){P.d.yourBest=r.ticks;}tryLine();
+ P.d.session=r.session;P.d.record=r.record;P.d.wr=r.wr;if(r.best){P.d.yourBest=r.ticks;}tryLine();
  const c=$('card'),b=P.d.bots;
- const head=r.newRecord?'New record!':r.end==='arrived'?(r.medal?'<span class="medal '+r.medal+'" style="width:20px;height:20px"></span> '+MEDAL_TEXT[r.medal]:'Made it'):r.end==='pop'?'Popped on a spike':r.end==='timeout'?'Out of time':'Restarted';
+ const medal=MEDALS.includes(r.medal)?r.medal:null;
+ const head=r.newWR?'<span style="color:var(--gold)">New WR!</span>':r.newRecord?'New record!':r.end==='arrived'?(medal?'<span class="medal '+medal+'" style="width:20px;height:20px"></span> '+MEDAL_TEXT[medal]:'Made it'):r.end==='pop'?'Popped on a spike':r.end==='timeout'?'Out of time':'Restarted';
  c.innerHTML='<h2>'+head+'</h2>'+
   '<div class=you>This try: '+(r.end==='arrived'?sec(r.ticks):'—')+(r.best?' (personal best)':'')+'</div>'+
-  '<div>Your best: '+sec(P.d.yourBest)+' · record: '+(r.record?sec(r.record.ticks)+' by '+escH(r.record.by):'—')+'</div>'+
+  '<div>Your best: '+sec(P.d.yourBest)+' · <span style="color:var(--gold)">WR</span> '+(r.wr?sec(r.wr.ticks)+' by '+escH(r.wr.by):'—')+'</div>'+
   '<div style="color:#ff6b6b">Planning bot: '+sec(b.search)+'</div>'+
   (res!==r.end&&r.end!=='restart'?'<div class=dim>(the server\'s replay disagreed with your browser; the server counts)</div>':'')+
   (r.end==='arrived'?'<div class=dim style="margin-top:6px">Next puzzle in a moment · <b>R</b> try again · <b>N</b> go now</div><div class="bar"><i></i></div>'
@@ -343,11 +354,11 @@ async function backPuzzle(){
 // ---------- leaderboard ----------
 async function drawBoard(){
  const d=await api('/api/leaderboard');
- $('tplayers').innerHTML='<tr><th>#</th><th>Player</th><th>Rating</th><th>Medals</th><th>Records</th><th>Puzzles finished</th></tr>'+
-  (d.players.length?d.players.map((p,i)=>'<tr><td>'+(i+1)+'</td><td'+(ME&&p.name===ME.name?' class=you':'')+'>'+escH(p.name)+(p.flagged?' <span class=flag title="flagged for review">⚑</span>':'')+'</td><td><b>'+p.rating+'</b></td><td>'+
-   ['gold','silver','bronze'].map(k=>'<span class="medal '+k+'"></span>'+p[k]).join(' ')+'</td><td>'+p.records+'</td><td>'+p.finished+' of '+p.sessions+'</td></tr>').join(''):'<tr><td colspan=6 class=dim>Nobody yet. Play 3 puzzles to be first.</td></tr>');
- $('tpuzzles').innerHTML='<tr><th>Puzzle</th><th>Mode</th><th>Rating</th><th>Players</th><th>Tries each</th><th>Restarts each</th><th>Within 5% of record</th><th>Record</th><th>Planning bot</th></tr>'+
-  (d.puzzles.length?d.puzzles.slice(0,50).map(p=>'<tr><td>'+p.seed+'</td><td>'+MODE_NAMES[p.mode]+'</td><td><b>'+p.rating+'</b></td><td>'+p.players+'</td><td>'+p.triesPer.toFixed(1)+'</td><td>'+p.restartsPer.toFixed(1)+'</td><td>'+(p.nearRecord==null?'—':Math.round(p.nearRecord*100)+'%')+'</td><td>'+(p.record?p.record.secs.toFixed(2)+' s <span class=dim>'+escH(p.record.by)+'</span>':'—')+'</td><td>'+p.botSecs.toFixed(2)+' s</td></tr>').join(''):'<tr><td colspan=9 class=dim>No results yet.</td></tr>');
+ $('tplayers').innerHTML='<tr><th>#</th><th>Player</th><th>Rating</th><th>Medals</th><th>WRs</th><th>Puzzles finished</th></tr>'+
+  (d.players.length?d.players.map((p,i)=>'<tr><td>'+(i+1)+'</td><td'+(ME&&p.name===ME.name?' class=you':'')+'>'+escH(p.name)+(p.flagged?' <span class=flag title="flagged for review">⚑</span>':'')+'</td><td><b>'+num(p.rating)+'</b></td><td>'+
+   MEDALS.map(k=>'<span class="medal '+k+'"></span>'+num(p[k])).join(' ')+'</td><td>'+num(p.wrs)+'</td><td>'+num(p.finished)+' of '+num(p.sessions)+'</td></tr>').join(''):'<tr><td colspan=6 class=dim>Nobody yet. Play 3 puzzles to be first.</td></tr>');
+ $('tpuzzles').innerHTML='<tr><th>Puzzle</th><th>Mode</th><th>Rating</th><th>Players</th><th>Tries each</th><th>Restarts each</th><th>Within 5% of record</th><th>WR</th><th>Planning bot</th></tr>'+
+  (d.puzzles.length?d.puzzles.slice(0,50).map(p=>'<tr><td>'+num(p.seed)+'</td><td>'+(MODE_NAMES[p.mode]||'')+'</td><td><b>'+num(p.rating)+'</b></td><td>'+num(p.players)+'</td><td>'+p.triesPer.toFixed(1)+'</td><td>'+p.restartsPer.toFixed(1)+'</td><td>'+(p.nearRecord==null?'—':Math.round(p.nearRecord*100)+'%')+'</td><td>'+(p.wr?p.wr.secs.toFixed(2)+' s <span class=dim>'+escH(p.wr.by)+'</span>':'—')+'</td><td>'+p.botSecs.toFixed(2)+' s</td></tr>').join(''):'<tr><td colspan=9 class=dim>No results yet.</td></tr>');
 }
 
 // ---------- admin ----------
@@ -355,7 +366,7 @@ async function drawAdmin(){
  const ps=await api('/api/admin/players');
  const act=(k,a,label)=>'<button class="btn" style="padding:2px 8px" data-k="'+escH(k)+'" data-a="'+a+'">'+label+'</button>';
  $('tadminp').innerHTML='<tr><th>Player</th><th>Status</th><th>Rating</th><th>Puzzles</th><th>Tries</th><th>Restarts</th><th>Deaths</th><th>Flags</th><th>Last seen</th><th>Actions</th></tr>'+
-  ps.map(p=>'<tr><td>'+escH(p.name)+(p.admin?' <span class=dim>(admin)</span>':'')+'</td><td>'+[p.banned?'banned':'',p.excluded?'excluded':'',p.trusted?'trusted':'',p.counted?'counted':'not counted'].filter(Boolean).join(', ')+'</td><td>'+p.rating+'</td><td>'+p.finished+'/'+p.sessions+'</td><td>'+p.tries+'</td><td>'+p.restarts+' / '+p.instant+' / '+p.idle+'</td><td>'+p.deaths+'</td><td class=flag style="white-space:normal;min-width:180px">'+p.flags.map(f=>escH(f.reason)).join('<br>')+'</td><td>'+(p.last?new Date(p.last).toLocaleString():'—')+'</td><td>'+
+  ps.map(p=>'<tr><td>'+escH(p.name)+(p.admin?' <span class=dim>(admin)</span>':'')+'</td><td>'+[p.banned?'banned':'',p.excluded?'excluded':'',p.trusted?'trusted':'',p.counted?'counted':'not counted'].filter(Boolean).join(', ')+'</td><td>'+num(p.rating)+'</td><td>'+num(p.finished)+'/'+num(p.sessions)+'</td><td>'+num(p.tries)+'</td><td>'+num(p.restarts)+' / '+num(p.instant)+' / '+num(p.idle)+'</td><td>'+num(p.deaths)+'</td><td class=flag style="white-space:normal;min-width:180px">'+p.flags.map(f=>escH(f.reason)).join('<br>')+'</td><td>'+(p.last?new Date(p.last).toLocaleString():'—')+'</td><td>'+
    (p.excluded?act(p.key,'include','Include'):act(p.key,'exclude','Exclude'))+' '+(p.banned?act(p.key,'unban','Unban'):act(p.key,'ban','Ban'))+' '+
    (p.flags.length?act(p.key,'clearflags','Clear flags'):p.trusted?act(p.key,'untrust','Untrust'):'')+' '+act(p.key,'delete','Delete data')+'</td></tr>').join('');
  $('tadminp').querySelectorAll('button').forEach(b=>b.onclick=async()=>{

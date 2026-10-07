@@ -9,14 +9,17 @@
 //    plain steering (the simple bot), later by how close players get to the record.
 //  - Rating works like chess with each puzzle as an opponent: a puzzle's result comes from your best time
 //    against the planning bot's, shrunk a little per try, so grinding pays only if it really improves.
-//  - Medals: gold beats the planning bot, silver is within 10%, bronze finishes. Records are the fastest by anyone.
+//  - Medals: gold beats the planning bot, silver is within 10%, bronze finishes. The WR (world record) is the
+//    fastest player time, with a ghost to race; records also count the bots.
 const fs = require('fs'), path = require('path'), crypto = require('crypto'), http = require('http');
 
-const DIR = path.join(__dirname, 'runs', 'arena');
-const USERS = path.join(DIR, 'users.json'), TOKENS = path.join(DIR, 'tokens.json'), TRIES = path.join(DIR, 'tries.jsonl');
-const BEST = path.join(DIR, 'best');
-const ADMINS = (process.env.ARENA_ADMINS || 'bambitp').split(','); // the first account registered with one of these is an admin
+const DEFAULT_DIR = path.join(__dirname, 'runs', 'arena');
+const ADMINS = (process.env.ARENA_ADMINS || 'bambi').toLowerCase().split(','); // accounts with these names are admins
 const ORIGINS = ['https://bambitp.github.io'];
+const RESERVED = /^(__proto__|constructor|prototype|hasownproperty|tostring|valueof)$/i; // never valid usernames
+const ENDS = ['arrived', 'pop', 'timeout', 'restart'];
+const IP_LIMIT = +(process.env.ARENA_IP_LIMIT || 60); // requests per 10 seconds from one address
+const REG_LIMIT = +(process.env.ARENA_REG_LIMIT || 3); // new accounts per hour from one address
 const START_RATING = 1000, K_PLAYER = 32, K_PUZZLE = 16;
 const TRY_FACTOR = 0.98;             // each try after the first takes 2% off a puzzle's result
 const TOKEN_DAYS = 30;
@@ -57,20 +60,32 @@ function medalOf(ticks, b) {
 
 module.exports = function startArena(ctx) {
   // ctx: { N, record, task, getMap, ready, playable, botRuns(seed), extraOf(seed), FIRST, host, port, origins }
-  const { N } = ctx;
+  const { N } = ctx, DIR = ctx.dir || DEFAULT_DIR; // ctx.dir: a separate data folder (tests)
+  const USERS = path.join(DIR, 'users.json'), TOKENS = path.join(DIR, 'tokens.json'), TRIES = path.join(DIR, 'tries.jsonl');
+  const BEST = path.join(DIR, 'best');
   fs.mkdirSync(BEST, { recursive: true });
-  const users = readJSON(USERS, {}), tokens = readJSON(TOKENS, {});
+  // stores without a prototype, so no key (e.g. "__proto__") can reach Object.prototype
+  const users = Object.assign(Object.create(null), readJSON(USERS, {})), tokens = Object.assign(Object.create(null), readJSON(TOKENS, {}));
+  const getUser = (key) => (typeof key === 'string' && Object.prototype.hasOwnProperty.call(users, key) ? users[key] : null);
+  for (const k of ADMINS) if (getUser(k)) users[k].admin = true;
+  for (const k of Object.keys(users)) if (!ADMINS.includes(k)) users[k].admin = false;
+  for (const [t, v] of Object.entries(tokens)) if (v.exp < now()) delete tokens[t];
   const origins = ctx.origins || ORIGINS;
+  const devOrigins = !!process.env.ARENA_DEV; // allow http://localhost pages only when testing
   let tries = fs.existsSync(TRIES) ? fs.readFileSync(TRIES, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+  let byUser = new Map();
+  const index = () => { byUser = new Map(); for (const t of tries) { if (!byUser.has(t.u)) byUser.set(t.u, []); byUser.get(t.u).push(t); } };
+  index();
+  const triesOf = (key) => byUser.get(key) || [];
   const saveUsers = () => writeJSON(USERS, users), saveTokens = () => writeJSON(TOKENS, tokens);
-  const logTry = (t) => { tries.push(t); fs.appendFileSync(TRIES, JSON.stringify(t) + '\n'); };
+  const logTry = (t) => { tries.push(t); if (!byUser.has(t.u)) byUser.set(t.u, []); byUser.get(t.u).push(t); fs.appendFileSync(TRIES, JSON.stringify(t) + '\n'); };
   const bestFile = (key) => path.join(BEST, key + '.json');
 
   // ---------- accounts ----------
   const hashPw = (pw, salt) => crypto.scryptSync(pw, salt, 32).toString('hex');
   function newUser(name, pw) {
     const salt = crypto.randomBytes(16).toString('hex'), key = name.toLowerCase();
-    const admin = ADMINS.includes(key); // names are unique, so only the first to register one gets it
+    const admin = ADMINS.includes(key);
     return { name, salt, hash: hashPw(pw, salt), created: now(), admin, banned: false, excluded: false, trusted: false,
       flags: [], mode: 'easy', next: Object.fromEntries(LISTS.map((m) => [m, ctx.FIRST])), sess: {}, done: {}, stars: {}, open: null,
       rating: START_RATING, sessions: 0, finished: 0, best: {} };
@@ -81,8 +96,8 @@ module.exports = function startArena(ctx) {
   }
   function auth(req) {
     const m = /^Bearer ([0-9a-f]{64})$/.exec(req.headers.authorization || ''), t = m && tokens[m[1]];
-    if (!t || t.exp < now() || !users[t.u]) return null;
-    return users[t.u];
+    if (!t || t.exp < now()) return null;
+    return getUser(t.u);
   }
   // at most n events per `ms` for a key
   const hits = new Map();
@@ -90,17 +105,32 @@ module.exports = function startArena(ctx) {
     const t = now(), a = (hits.get(key) || []).filter((x) => x > t - ms);
     a.push(t); hits.set(key, a); return a.length > n;
   }
+  setInterval(() => { // forget old rate-limit records and expired logins
+    const t = now();
+    for (const [k, a] of hits) if (!a.length || a[a.length - 1] < t - 3600e3) hits.delete(k);
+    let gone = 0; for (const [k, v] of Object.entries(tokens)) if (v.exp < t) { delete tokens[k]; gone++; }
+    if (gone) saveTokens();
+  }, 60e3).unref();
+  // short-lived caches: the puzzle list, records and leaderboard are recomputed at most this often
+  const cache = new Map();
+  function cached(key, ms, fn) {
+    const c = cache.get(key), t = now();
+    if (c && c.at > t - ms) return c.v;
+    const v = fn(); cache.set(key, { at: t, v }); return v;
+  }
+  const extraOf = (s) => cached('x' + s, 30e3, () => ctx.extraOf(s));
   const counts = (u) => u && !u.banned && !u.excluded && !(u.flags.length && !u.trusted);
 
   // ---------- puzzles: bot times, records, modes ----------
   function botTimes(seed) {
-    const b = ctx.botRuns(seed), x = ctx.extraOf(seed), out = {};
+    const b = ctx.botRuns(seed), x = extraOf(seed), out = {};
     for (const k of Object.keys(BOTS)) { const r = (b && b[k]) || x[k]; if (r && r.result === 'arrived') out[k] = r.ticks; }
     return out;
   }
   const refTicks = (seed) => botTimes(seed).search || Math.min(N.MAX_TICKS, ...Object.values(botTimes(seed)));
   // a puzzle's fastest time by anyone: players in good standing and bots
-  function recordOf(seed) {
+  function recordOf(seed) { return cached('r' + seed, 5e3, () => recordNow(seed)); }
+  function recordNow(seed) {
     let best = null;
     for (const [k, t] of Object.entries(botTimes(seed))) if (!best || t < best.ticks) best = { ticks: t, by: BOTS[k], bot: true };
     for (const u of Object.values(users)) {
@@ -109,7 +139,19 @@ module.exports = function startArena(ctx) {
     }
     return best;
   }
-  function puzzleMode(seed) {
+  // the world record: the fastest time by a player in good standing (bots don't count)
+  function wrOf(seed) {
+    return cached('w' + seed, 5e3, () => {
+      let best = null;
+      for (const [k, u] of Object.entries(users)) {
+        const t = u.best[seed];
+        if (t != null && counts(u) && (!best || t < best.ticks)) best = { ticks: t, by: u.name, key: k };
+      }
+      return best;
+    });
+  }
+  function puzzleMode(seed) { return cached('m' + seed, 30e3, () => modeNow(seed)); }
+  function modeNow(seed) {
     const rec = recordOf(seed), ratios = [];
     let human = ctx.ownerBest ? ctx.ownerBest(seed) : null;   // the site owner's private-page best counts too
     for (const u of Object.values(users)) if (counts(u) && u.best[seed] != null) {
@@ -126,10 +168,11 @@ module.exports = function startArena(ctx) {
     return best;
   }
   function medals(u) {
-    const m = { gold: 0, silver: 0, bronze: 0, records: 0 };
+    const m = { gold: 0, silver: 0, bronze: 0, records: 0, wrs: 0 };
     for (const [s, t] of Object.entries(u.best)) {
       const k = medalOf(t, ctx.botRuns(+s)); if (k) m[k]++;
       const r = recordOf(+s); if (r && !r.bot && r.by === u.name) m.records++;
+      const w = wrOf(+s); if (w && w.by === u.name) m.wrs++;
     }
     return m;
   }
@@ -174,7 +217,7 @@ module.exports = function startArena(ctx) {
   // ---------- automatic R-spam flags ----------
   function checkFlags(key) {
     const u = users[key]; if (!u || u.trusted) return;
-    const rs = tries.filter((t) => t.u === key && isRestart(t.end)), last = rs.slice(-30), recent = rs.filter((t) => t.at > now() - 10 * 60e3);
+    const rs = triesOf(key).filter((t) => isRestart(t.end)), last = rs.slice(-30), recent = rs.filter((t) => t.at > now() - 10 * 60e3);
     const reasons = [];
     if (recent.length >= 40) reasons.push(['fast', `${recent.length} restarts in 10 minutes`]);
     if (last.length >= 20) {
@@ -202,14 +245,17 @@ module.exports = function startArena(ctx) {
       ? (Object.keys(u.stars).length ? "You're past your last starred puzzle. Press Back to replay them, or star more with the ☆ button." : 'No starred puzzles yet. Press the ☆ button on a puzzle to save it here.')
       : `You've done every ${mode} puzzle that's ready. The bots are still working on new ones; try another mode or check back later.` };
     if (seed !== u.next[mode]) { u.next[mode] = seed; saveUsers(); }
-    const t = ctx.task(seed), b = ctx.botRuns(seed), x = ctx.extraOf(seed), mine = readJSON(bestFile(key), {}), cur = session(u, seed);
+    const t = ctx.task(seed), b = ctx.botRuns(seed), x = extraOf(seed), mine = readJSON(bestFile(key), {}), cur = session(u, seed);
     return { seed, mode, left, map: ctx.getMap(t.key), tile: N.TILE, touchR: N.BALL_R, goal: t.goal, start: t.start, maxTicks: N.MAX_TICKS,
       session: { tries: cur.tries, restarts: cur.restarts, deaths: cur.deaths, best: cur.best }, yourBest: u.best[seed] ?? null,
       practice: !!u.done[seed], starred: !!u.stars[seed], puzzleMode: puzzleMode(seed), first: prevReady(seed, mode, u) === null,
-      record: recordOf(seed), refTicks: refTicks(seed), rating: Math.round(puzzleOf(seed).rating), bots: botTimes(seed),
+      record: recordOf(seed), wr: wrPublic(seed), fastestBot: Math.min(...Object.values(botTimes(seed)), N.MAX_TICKS), refTicks: refTicks(seed), rating: Math.round(puzzleOf(seed).rating), bots: botTimes(seed),
       ghosts: { search: b && b.search.frames, baseline: b && b.baseline.frames, fast: x.fast && x.fast.frames,
-        net: x.net && x.net.frames, guided: x.guided && x.guided.frames, you: mine[seed] || null } };
+        net: x.net && x.net.frames, guided: x.guided && x.guided.frames, you: mine[seed] || null, wr: wrFrames(seed) } };
   }
+  const wrPublic = (seed) => { const w = wrOf(seed); return w && { ticks: w.ticks, by: w.by }; };
+  // the WR holder's run, to race as a ghost
+  function wrFrames(seed) { const w = wrOf(seed); return w ? readJSON(bestFile(w.key), {})[seed] || null : null; }
   function start(key) {
     const u = users[key], mode = u.mode;
     if (u.banned) throw new Error('This account is banned.');
@@ -232,8 +278,8 @@ module.exports = function startArena(ctx) {
     const run = ctx.record(ctx.task(open.seed), (i) => (i < ks.length ? ks[i] : undefined));
     const end = run.result === 'arrived' || run.result === 'pop' ? run.result : ks.length >= N.MAX_TICKS ? 'timeout' : 'restart';
     u.open = null;
-    const entry = { u: key, seed: open.seed, at: now(), end, ticks: run.ticks, idle: ks.every((k) => k === 0), claimed: body.end };
-    const cur = session(u, open.seed), recBefore = recordOf(open.seed);
+    const entry = { u: key, seed: open.seed, at: now(), end, ticks: run.ticks, idle: ks.every((k) => k === 0), claimed: ENDS.includes(body.end) ? body.end : null };
+    const cur = session(u, open.seed), recBefore = recordOf(open.seed), wrBefore = wrOf(open.seed);
     tally(cur, entry);
     let best = false;
     if (end === 'arrived' && (u.best[open.seed] == null || run.ticks < u.best[open.seed])) {
@@ -241,9 +287,11 @@ module.exports = function startArena(ctx) {
       const mine = readJSON(bestFile(key), {}); mine[open.seed] = run.frames; writeJSON(bestFile(key), mine);
     }
     logTry(entry); saveUsers(); checkFlags(key);
-    const rec = recordOf(open.seed);
-    return { end, ticks: run.ticks, claimed: body.end, best, medal: end === 'arrived' ? medalOf(run.ticks, ctx.botRuns(open.seed)) : null,
-      record: rec, newRecord: end === 'arrived' && !!rec && !rec.bot && rec.by === u.name && (!recBefore || run.ticks < recBefore.ticks),
+    if (best) for (const k of ['r', 'w', 'm']) cache.delete(k + open.seed);
+    const rec = recordOf(open.seed), wr = wrOf(open.seed);
+    return { end, ticks: run.ticks, claimed: entry.claimed, best, medal: end === 'arrived' ? medalOf(run.ticks, ctx.botRuns(open.seed)) : null,
+      record: rec, wr: wrPublic(open.seed), newWR: end === 'arrived' && !!wr && wr.by === u.name && (!wrBefore || run.ticks < wrBefore.ticks),
+      newRecord: end === 'arrived' && !!rec && !rec.bot && rec.by === u.name && (!recBefore || run.ticks < recBefore.ticks),
       session: { tries: cur.tries, restarts: cur.restarts, deaths: cur.deaths, best: cur.best } };
   }
   function dropOpen(u, key, seed) {
@@ -285,7 +333,8 @@ module.exports = function startArena(ctx) {
       return { seed: +s, mode: puzzleMode(+s), rating: Math.round(p.rating), players: p.sessions, finishRate: p.finishes / p.sessions,
         triesPer: p.tries / p.sessions, restartsPer: p.restarts / p.sessions,
         nearRecord: mine.length ? mine.filter((r) => r <= 1.05).length / mine.length : null,
-        record: rec && { secs: rec.ticks / 60, by: rec.by, bot: rec.bot }, botSecs: refTicks(+s) / 60 };
+        record: rec && { secs: rec.ticks / 60, by: rec.by, bot: rec.bot }, wr: (() => { const w = wrOf(+s); return w && { secs: w.ticks / 60, by: w.by }; })(),
+        botSecs: refTicks(+s) / 60 };
     }).sort((a, b) => b.rating - a.rating);
     return { players, puzzles: pz };
   }
@@ -303,7 +352,7 @@ module.exports = function startArena(ctx) {
   // ---------- admin ----------
   function adminList() {
     return Object.entries(users).map(([key, u]) => {
-      const mine = tries.filter((t) => t.u === key && isTry(t.end)), rs = mine.filter((t) => isRestart(t.end));
+      const mine = triesOf(key).filter((t) => isTry(t.end)), rs = mine.filter((t) => isRestart(t.end));
       return { key, name: u.name, created: u.created, admin: u.admin, banned: u.banned, excluded: u.excluded, trusted: u.trusted,
         flags: u.flags, rating: Math.round(u.rating), sessions: u.sessions, finished: u.finished, tries: mine.length,
         restarts: rs.length, instant: rs.filter((t) => t.ticks < 30).length, idle: rs.filter((t) => t.idle).length,
@@ -311,7 +360,7 @@ module.exports = function startArena(ctx) {
     }).sort((a, b) => (b.last || 0) - (a.last || 0));
   }
   function adminAction(body) {
-    const u = users[body.key]; if (!u) throw new Error('No such player.');
+    const u = getUser(body.key); if (!u) throw new Error('No such player.');
     switch (body.action) {
       case 'exclude': u.excluded = true; break;
       case 'include': u.excluded = false; break;
@@ -320,21 +369,21 @@ module.exports = function startArena(ctx) {
       case 'clearflags': u.flags = []; u.trusted = true; break;      // trusted: no new automatic flags
       case 'untrust': u.trusted = false; break;
       case 'delete': // all their tries and best runs; the account stays
-        tries = tries.filter((t) => t.u !== body.key);
+        tries = tries.filter((t) => t.u !== body.key); index();
         fs.writeFileSync(TRIES, tries.map((t) => JSON.stringify(t) + '\n').join(''));
         if (fs.existsSync(bestFile(body.key))) fs.unlinkSync(bestFile(body.key));
         Object.assign(u, { next: Object.fromEntries(LISTS.map((m) => [m, ctx.FIRST])), sess: {}, done: {}, open: null, best: {}, flags: [] });
         break;
       default: throw new Error('Unknown action.');
     }
-    rebuild(); saveUsers();
+    cache.clear(); rebuild(); saveUsers();
     return { ok: true };
   }
 
   // ---------- http ----------
   function send(req, res, code, body) {
-    const o = req.headers.origin, h = { 'content-type': 'application/json', 'cache-control': 'no-store' };
-    if (o && (origins.includes(o) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o))) {
+    const o = req.headers.origin, h = { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+    if (o && (origins.includes(o) || (devOrigins && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)))) {
       Object.assign(h, { 'access-control-allow-origin': o, vary: 'Origin', 'access-control-allow-headers': 'authorization, content-type',
         'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-max-age': '600' });
     }
@@ -344,6 +393,7 @@ module.exports = function startArena(ctx) {
 
   const server = http.createServer((req, res) => {
     if (req.method === 'OPTIONS') return send(req, res, 204);
+    if (limited('ip:' + ip(req), IP_LIMIT, 10e3)) return send(req, res, 429, { error: 'Too many requests. Slow down.' });
     const u = new URL(req.url, 'http://x');
     let raw = '', big = false;
     req.on('data', (c) => { raw += c; if (raw.length > 64e3 && !big) { big = true; send(req, res, 413, { error: 'Too big.' }); req.destroy(); } });
@@ -356,18 +406,18 @@ module.exports = function startArena(ctx) {
           if (limited('auth:' + ip(req), 10, 10 * 60e3)) return send(req, res, 429, { error: 'Too many tries. Wait a few minutes.' });
           const name = String(body.username || ''), pw = String(body.password || ''), key = name.toLowerCase();
           if (p === '/api/register') {
-            if (!/^[A-Za-z0-9_-]{3,20}$/.test(name)) return send(req, res, 400, { error: 'Usernames are 3 to 20 letters, numbers, - or _.' });
+            if (!/^[A-Za-z0-9_-]{3,20}$/.test(name) || RESERVED.test(name)) return send(req, res, 400, { error: 'Usernames are 3 to 20 letters, numbers, - or _.' });
             if (pw.length < 8 || pw.length > 200) return send(req, res, 400, { error: 'Passwords need at least 8 characters.' });
-            if (users[key]) return send(req, res, 409, { error: 'That name is taken.' });
-            if (limited('register:' + ip(req), 3, 60 * 60e3)) return send(req, res, 429, { error: 'Too many new accounts from here.' });
+            if (getUser(key)) return send(req, res, 409, { error: 'That name is taken.' });
+            if (limited('register:' + ip(req), REG_LIMIT, 60 * 60e3)) return send(req, res, 429, { error: 'Too many new accounts from here.' });
             users[key] = newUser(name, pw); saveUsers();
             return send(req, res, 200, { token: issueToken(key), me: me(key) });
           }
-          const v = users[key];
+          const v = getUser(key);
           if (!v || !crypto.timingSafeEqual(Buffer.from(hashPw(pw, v.salt), 'hex'), Buffer.from(v.hash, 'hex'))) return send(req, res, 401, { error: 'Wrong username or password.' });
           return send(req, res, 200, { token: issueToken(key), me: me(key) });
         }
-        if (p === '/api/leaderboard') return send(req, res, 200, leaderboard());
+        if (p === '/api/leaderboard') return send(req, res, 200, cached('board', 10e3, leaderboard));
         if (p === '/api/puzzle') return send(req, res, 200, puzzleBoard(parseInt(u.searchParams.get('seed'), 10)));
         const user = auth(req);
         if (!user) return send(req, res, 401, { error: 'Please log in.' });
@@ -390,7 +440,7 @@ module.exports = function startArena(ctx) {
           return send(req, res, 200, start(key));
         }
         if (p === '/api/finish' && post) {
-          if (limited('finish:' + key, 4, 1000)) return send(req, res, 429, { error: 'Slow down.' });
+          if (limited('finish:' + key, 4, 1000) || limited('finish:all', 40, 1000)) return send(req, res, 429, { error: 'Slow down.' });
           return send(req, res, 200, finish(key, body));
         }
         if (p === '/api/next' && post) return send(req, res, 200, next(key));
@@ -404,6 +454,7 @@ module.exports = function startArena(ctx) {
       } catch (e) { send(req, res, 400, { error: e.message }); }
     });
   });
+  server.requestTimeout = 15e3; server.headersTimeout = 10e3; // don't let slow requests hold connections open
   rebuild();
   server.listen(ctx.port, ctx.host, () => console.log(`arena: http://${ctx.host}:${ctx.port}/api/health`));
   return { server, users, rebuild };
