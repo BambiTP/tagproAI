@@ -23,8 +23,8 @@ const VERSIONS = {
 async function run(seed, v) {
   const task = F.makeTask(seed, true), { sim, p } = F.startSim(task), keep = v.keep || 1;
   let search, pool;
-  if (v.net) { const n = getNet(); search = () => { const q = p.body.GetPosition(), w = p.body.GetLinearVelocity(); return { line: [n.move(task, q.x, q.y, w.x, w.y)] }; }; }
-  else if (v.guided) { const n = getNet(), s = F.makeSearch2({ ...v, est: (t, x, y, vx, vy) => n.ticksLeft(t, x, y, vx, vy) }); search = () => s(task, sim, p); }
+  if (v.net) { const n = getNet(); n.tiles = sim.tiles; search = () => { const q = p.body.GetPosition(), w = p.body.GetLinearVelocity(); return { line: [n.move(task, q.x, q.y, w.x, w.y)] }; }; }
+  else if (v.guided) { const n = getNet(); n.tiles = sim.tiles; const s = F.makeSearch2({ ...v, est: (t, x, y, vx, vy) => n.ticksLeft(t, x, y, vx, vy) }); search = () => s(task, sim, p); }
   else if (v.old) { const s = N.makeSearch({ width: 16, depth: 8 }); search = () => ({ line: [s(task, sim, p)] }); }
   else if (v.threads) { pool = new F.Pool(v.threads); await pool.start(seed, true, v); }
   else { const s = F.makeSearch2(v); search = () => s(task, sim, p); }

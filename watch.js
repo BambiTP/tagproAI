@@ -92,7 +92,7 @@ if (!isMainThread) {
   const netDriver = (net, task) => {
     let a = 0;
     return (t, sim, p) => {
-      if (t % N.K === 0) { const q = p.body.GetPosition(), v = p.body.GetLinearVelocity(); a = net.move(task, q.x, q.y, v.x, v.y); }
+      if (t % N.K === 0) { net.tiles = sim.tiles; const q = p.body.GetPosition(), v = p.body.GetLinearVelocity(); a = net.move(task, q.x, q.y, v.x, v.y); }
       return a;
     };
   };
@@ -102,7 +102,7 @@ if (!isMainThread) {
       const est = net && ((t, x, y, vx, vy) => net.ticksLeft(t, x, y, vx, vy));
       const run = m.bot === 'fast' ? record(task, planner(FS.makeSearch2({ prune: true }), task, 2))
         : m.bot === 'net' ? record(task, netDriver(net, task))
-        : record(task, planner(FS.makeSearch2({ prune: true, est }), task, 2));
+        : record(task, ((inner) => (t, sim, p) => { net.tiles = sim.tiles; return inner(t, sim, p); })(planner(FS.makeSearch2({ prune: true, est }), task, 2)));
       return parentPort.postMessage({ kind: 'extra', seed: m.seed, bot: m.bot, version: m.version, run });
     }
     const seed = m;

@@ -12,7 +12,8 @@
 const fs = require('fs'), path = require('path');
 const N = require('./nav'), F = require('./fastsearch'), X = require('./features');
 
-const ROW = X.SIZE + 4, WEIGHT = 3, BEAT = 1.04;
+const V2 = process.env.FEAT === '2'; // FEAT=2: the boost-aware view (features2)
+const SIZE = V2 ? X.SIZE2 : X.SIZE, ROW = SIZE + 4, WEIGHT = 3, BEAT = 1.04;
 const BOTS = 'runs/touch/bots', EXTRA = 'runs/touch/extra';
 const isTest = (s) => s >= 101 && s <= 140;
 
@@ -50,7 +51,7 @@ if (require.main === module) {
     let end = -1;
     for (let t = 0; t < ticks; t++) {
       const k = frames[t][2];
-      if (t % N.K === 0) { const q = p.body.GetPosition(), v = p.body.GetLinearVelocity(); lessons.push({ f: X.features(task, q.x, q.y, v.x, v.y), a: k, t }); }
+      if (t % N.K === 0) { const q = p.body.GetPosition(), v = p.body.GetLinearVelocity(); lessons.push({ f: V2 ? X.features2(task, q.x, q.y, v.x, v.y, sim.tiles) : X.features(task, q.x, q.y, v.x, v.y), a: k, t }); }
       N.setKeys(p, k); sim.tickOnce();
       if (p.dead) break;
       const q = p.body.GetPosition(); if (N.touched(task.goal, q.x, q.y)) { end = t + 1; break; }
@@ -61,7 +62,7 @@ if (require.main === module) {
     for (let i = 0; i < w; i++) for (const l of lessons) rows.push([l.f, l.a, (end - l.t) / 60, seed + 0.5, l.t]);
   }
   const buf = new Float32Array(rows.length * ROW);
-  rows.forEach((r, i) => { buf.set(r[0], i * ROW); buf.set([r[1], r[2], r[3], r[4]], i * ROW + X.SIZE); });
+  rows.forEach((r, i) => { buf.set(r[0], i * ROW); buf.set([r[1], r[2], r[3], r[4]], i * ROW + SIZE); });
   fs.writeFileSync(out, Buffer.from(buf.buffer));
   console.log(JSON.stringify({ rows: rows.length, ...why }));
 }

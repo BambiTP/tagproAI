@@ -5,7 +5,8 @@
 // out as good as that). Puzzles whose seed ends in 0 are held out to check on.
 const fs = require('fs'), path = require('path');
 const X = require('./features');
-const ROW = X.SIZE + 4, IN = X.SIZE, H = 128, OUT = 10, LAMBDA = 1, BATCH = 256;
+const L = X.LAYOUT[process.env.FEAT || 1]; // FEAT=2: train on the boost-aware view (refeat.js / humangen.js)
+const ROW = L.SIZE + 4, IN = L.SIZE, H = 128, OUT = 10, LAMBDA = 1, BATCH = 256;
 const HUBER = 0.05;  // seconds: time-left error counts linearly past this, like the average-error score
 const DECAY = 1e-4;  // weight decay, against memorising
 
@@ -23,10 +24,10 @@ const symCell = SYMS.map((S) => { // where each window cell lands
   return m;
 });
 function symmetric(src, dst, k) {
-  const S = SYMS[k], cells = X.S * X.S, m = symCell[k], o = X.CH * cells;
-  for (let ch = 0; ch < X.CH; ch++) for (let c = 0; c < cells; c++) dst[ch * cells + m[c]] = src[ch * cells + c];
+  const S = SYMS[k], cells = X.S * X.S, m = symCell[k], o = L.CH * cells;
+  for (let ch = 0; ch < L.CH; ch++) for (let c = 0; c < cells; c++) dst[ch * cells + m[c]] = src[ch * cells + c];
   for (let i = o; i < IN; i++) dst[i] = src[i];
-  for (const j of [0, 2, 4, 7]) { const [a, b] = vec(S, src[o + j], src[o + j + 1]); dst[o + j] = a; dst[o + j + 1] = b; } // velocity, spot in tile, goal and route directions
+  for (const j of L.vectors) { const [a, b] = vec(S, src[o + j], src[o + j + 1]); dst[o + j] = a; dst[o + j + 1] = b; } // velocity, spot in tile, goal and route directions
 }
 
 function load() {
@@ -115,7 +116,7 @@ function step(net, opt, Xb, act, left, n, lr) {
 }
 
 // the hand-written estimate in seconds, from its slot in the features
-const handSecs = (a, r) => a[r + IN - 2] * 4;
+const handSecs = (a, r) => a[r + L.est] * 4;
 
 function gather(all, idx, from, n, augment) {
   const Xb = new Float32Array(n * IN), act = new Int32Array(n), left = new Float32Array(n);
@@ -135,7 +136,7 @@ function evaluate(net, all, idx) {
       let best = 0; for (let j = 1; j < 9; j++) if (Z[i * OUT + j] > Z[i * OUT + best]) best = j;
       if (best === act[i]) right++;
       mae += Math.abs(Z[i * OUT + 9] - left[i]); // both measured as corrections: the hand estimate's is 0
-      estMae += Math.abs(left[i]);
+      estMae += Math.abs(left[i]); // (left is already the correction)
     }
   }
   return { moveMatch: right / idx.length, timeErr: mae / idx.length, handErr: estMae / idx.length };

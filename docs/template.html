@@ -50,14 +50,29 @@ th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
  <input id="lp" placeholder="Password (8+ characters)" type="password" autocomplete="current-password">
  <div class="err" id="lerr"></div>
  <button class="btn primary" id="blogin">Log in</button> <button class="btn" id="breg">Create account</button>
+ <p style="margin:16px 0 0"><button class="btn" id="bwatch">▶ Watch the bots (no login needed)</button></p>
  <p class="dim" id="lstatus" style="margin-top:14px"></p>
+</div>
+
+<div id="viewer" style="display:none">
+ <div id="top"><b style="color:#fff">TagPro Puzzles</b> <span class="dim">· watching the bots</span><span class="grow"></span><button class="btn" id="vplay">Log in to play</button></div>
+ <div class="hud">
+  <span>Puzzle <b id="vSeed" class="big">–</b></span><span class="big" id="vTime">0.00 s</span>
+  <select id="vMode" class="btn"><option value="all">All puzzles</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option><option value="expert">Expert</option></select>
+  <select id="vSpeed" class="btn"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+  <button class="btn" id="vnext">Next puzzle ▶</button>
+ </div>
+ <div class="hud" style="padding-top:0"><span class="dim">show:</span> <span id="wPick"></span></div>
+ <div class="hud" style="padding-top:0"><span id="vInfo" class="dim"></span></div>
+ <canvas id="vc" class="map"></canvas>
+ <p class="dim" style="text-align:center;font-size:12.5px">The <b style="color:#ff4a4a">planning bot</b> tries thousands of key presses ahead in the real physics; the <b style="color:#4a9bff">simple bot</b> just steers at the target; the <b style="color:#c070e0">network</b> learned to drive from the planning bot; <b style="color:#f5c542">WR</b> is the fastest player's run.</p>
 </div>
 
 <div id="app" style="display:none">
  <div id="top">
   <b style="color:#fff">TagPro Puzzles</b>
   <div class="tabs"><button class="btn on" data-t="play">Play</button><button class="btn" data-t="board">Leaderboard</button>
-   <button class="btn" data-t="help">How it works</button><button class="btn" data-t="admin" id="tadmin" style="display:none">Admin</button></div>
+   <button class="btn" data-t="help">How it works</button><button class="btn" id="tview">Watch bots</button><button class="btn" data-t="admin" id="tadmin" style="display:none">Admin</button></div>
   <span class="grow"></span>
   <span id="meline"></span><button class="btn" id="blogout">Log out</button>
  </div>
@@ -347,12 +362,48 @@ async function drawAdmin(){
   try{await api('/api/admin/action',{key:b.dataset.k,action:b.dataset.a});drawAdmin();}catch(e){alert(e.message);}});
 }
 
+// ---------- public bot viewer (no login needed) ----------
+const vv=new View($('vc')), VW={d:null,t:0,acc:0,endAt:0,on:false};
+function openViewer(){
+ if(!API){$('lstatus').textContent='The puzzle server is offline right now. Try again later.';return;}
+ if(P.state==='run'&&!P.paused)togglePause();
+ VW.on=true;$('login').style.display='none';$('app').style.display='none';$('viewer').style.display='block';
+ $('vplay').textContent=TOKEN&&ME?'Back to playing':'Log in to play';
+ if(location.hash!=='#watch')history.replaceState(null,'','#watch');
+ if(VW.d)vv.layout();else nextView();
+}
+function closeViewer(){VW.on=false;$('viewer').style.display='none';history.replaceState(null,'',location.pathname+location.search);if(TOKEN&&ME)enter(ME);else showLogin();}
+async function nextView(){
+ try{const r=await fetch(API+'/api/watch?mode='+$('vMode').value+'&after='+(VW.d?VW.d.seed:0));const d=await r.json();
+  if(!r.ok){$('vInfo').textContent=d.error||'Nothing to show yet.';setTimeout(()=>{if(VW.on)nextView();},5000);return;}
+  VW.d=d;VW.t=0;VW.acc=0;VW.endAt=0;vv.setMap(d.tiles,d.tile,d.goal,d.start);
+  $('vSeed').textContent=num(d.seed)+(MODE_NAMES[d.mode]?' ('+MODE_NAMES[d.mode]+')':'');
+  $('vInfo').innerHTML=BOTS.filter(b=>d.runs[b.k]).map(b=>'<span style="color:'+b.col+'">'+(b.k==='wr'?'WR, '+wrBy(d.runs.wr):escH(b.name))+': '+fmt(d.runs[b.k])+'</span>').join(' · ')+(d.runs.wr?'':' · <span class=dim>no WR yet</span>');
+ }catch(e){$('vInfo').textContent='Could not reach the puzzle server.';setTimeout(()=>{if(VW.on)nextView();},5000);}
+}
+function stepView(dt){
+ if(!VW.d)return;const runs=BOTS.filter(b=>VW.d.runs[b.k]&&shown(b.k)).map(b=>VW.d.runs[b.k].frames.length),len=Math.max(1,...runs);
+ if(VW.t<len-1){VW.acc+=dt*60*$('vSpeed').value;while(VW.acc>=1&&VW.t<len-1){VW.acc--;VW.t++;}}
+ else if(!VW.endAt)VW.endAt=performance.now()+2000;
+ else if(performance.now()>VW.endAt){VW.endAt=Infinity;nextView();}
+}
+function drawView(){
+ if(!VW.d)return;vv.base();const on=BOTS.filter(b=>VW.d.runs[b.k]&&shown(b.k));
+ for(const b of on)vv.trail(VW.d.runs[b.k].frames,VW.t,b.col,.4);
+ for(const b of on)vv.ghost(VW.d.runs[b.k].frames,VW.t,b.col,1,b.k==='wr'?'WR':b.name);
+ $('vTime').textContent=(VW.t/60).toFixed(2)+' s';
+}
+$('bwatch').onclick=openViewer;$('tview').onclick=openViewer;$('vplay').onclick=closeViewer;
+$('vnext').onclick=()=>nextView();$('vMode').onchange=()=>{VW.d=null;nextView();};
+addEventListener('hashchange',()=>{if(location.hash==='#watch'&&!VW.on)openViewer();});
+
 // ---------- start ----------
 let last=performance.now();
 function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
- if(tab==='play'){stepPlay(dt);drawPlay();}else $('count').style.display='none';
+ if(VW.on){stepView(dt);drawView();$('count').style.display='none';}
+ else if(tab==='play'){stepPlay(dt);drawPlay();}else $('count').style.display='none';
  requestAnimationFrame(frame);}
-addEventListener('resize',()=>{if(P.d&&P.d.seed)pv.layout();});
+addEventListener('resize',()=>{if(P.d&&P.d.seed)pv.layout();if(VW.on&&VW.d)vv.layout();});
 (async()=>{
  showLogin();$('lstatus').textContent='Finding the puzzle server…';
  API=await findServer();
@@ -361,5 +412,6 @@ addEventListener('resize',()=>{if(P.d&&P.d.seed)pv.layout();});
  catch(e){$('lstatus').textContent='The puzzle server is offline or restarting. Try again in a minute.';return;}
  pickers();requestAnimationFrame(frame);
  if(TOKEN)try{enter(await api('/api/me'));}catch(e){}
+ if(location.hash==='#watch')openViewer();
 })();
 </script></body></html>

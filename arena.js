@@ -390,6 +390,19 @@ module.exports = function startArena(ctx) {
         bot: bt.search ?? null, medal: holds(w, u) ? 'blue' : medalOf(t, ctx.botRuns(seed)), starred: !!(u.stars && u.stars[seed]) };
     }).sort((a, b) => a.seed - b.seed);
   }
+  // the public bot viewer (no login): every bot's run on a puzzle plus the WR, cycling through puzzles
+  function watchPuzzle(after, mode) {
+    const list = [...ctx.ready].filter((s) => ctx.playable(s) && (mode === 'all' || puzzleMode(s) === mode)).sort((a, b) => a - b);
+    if (!list.length) return null;
+    const s = list.find((x) => x > after) ?? list[0];
+    return cached('pw' + s, 30e3, () => {
+      const t = ctx.task(s), b = ctx.botRuns(s), x = extraOf(s), w = wrOf(s);
+      const run = (r) => (r ? { result: r.result, ticks: r.ticks, frames: r.frames } : null);
+      return { seed: s, mode: puzzleMode(s), tiles: ctx.getMap(t.key).tiles, tile: N.TILE, goal: t.goal, start: t.start,
+        runs: { search: run(b.search), baseline: run(b.baseline), fast: run(x.fast), net: run(x.net), guided: run(x.guided),
+          wr: w ? { result: 'arrived', ticks: w.ticks, frames: wrFrames(s), by: w.by } : null } };
+    });
+  }
   function puzzleBoard(seed) {
     const rows = Object.values(users).filter((u) => counts(u) && u.best[seed] != null).map((u) => ({ name: u.name, ticks: u.best[seed], bot: false }));
     for (const [k, t] of Object.entries(botTimes(seed))) rows.push({ name: BOTS[k], ticks: t, bot: true });
@@ -471,6 +484,12 @@ module.exports = function startArena(ctx) {
         }
         if (p === '/api/leaderboard') return send(req, res, 200, cached('board', 10e3, leaderboard));
         if (p === '/api/puzzle') return send(req, res, 200, puzzleBoard(parseInt(u.searchParams.get('seed'), 10)));
+        if (p === '/api/watch') {
+          const m = u.searchParams.get('mode') || 'all', after = parseInt(u.searchParams.get('after'), 10) || 0;
+          if (m !== 'all' && !MODES.includes(m)) return send(req, res, 400, { error: 'Unknown mode.' });
+          const w = watchPuzzle(after, m);
+          return w ? send(req, res, 200, w) : send(req, res, 404, { error: 'No puzzles ready yet.' });
+        }
         const user = auth(req);
         if (!user) return send(req, res, 401, { error: 'Please log in.' });
         const key = user.name.toLowerCase();

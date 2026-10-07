@@ -45,4 +45,51 @@ function features(task, x, y, vx, vy, out = new Float32Array(SIZE)) {
   return out;
 }
 
-module.exports = { features, SIZE, R, S, CH, NS };
+// ---------- version 2: a boost-aware view (network run 5 on) ----------
+// Run 4 was taught boost routes but its view only had the boost-blind route map, so nothing it could see
+// explained them. Version 2 adds, from the route map that treats live boosts as shortcuts (nav.boostField,
+// with the tiles as they are now): a sixth window channel of boost-aware route distance, and four numbers:
+// boost-aware route direction (2), boost-aware route distance and boost-aware time estimate. The boost
+// channel marks only live boosts the ball's team can use (a used boost stops counting until it returns).
+const CH2 = 6, NS2 = 16, SIZE2 = CH2 * S * S + NS2;
+const live = (t) => { const v = typeof t === 'string' ? parseFloat(t) : t; return v === 5 || v === 14; }; // red ball
+function features2(task, x, y, vx, vy, tiles, out = new Float32Array(SIZE2)) {
+  const v1 = features(task, x, y, vx, vy), o1 = CH * S * S, cells = S * S;
+  out.set(v1.subarray(0, o1), 0);
+  const FB = N.boostField(task, tiles), TL = N.TILE;
+  const tx = Math.round(x / TL), ty = Math.round(y / TL);
+  const d0 = N.fieldAt(FB, x, y), dRef = isFinite(d0) ? d0 : 0;
+  for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) {
+    const a = tx + dx, b = ty + dy, inside = a >= 0 && b >= 0 && a < FB.W && b < FB.H, k = (dx + R) * S + (dy + R);
+    out[2 * cells + k] = inside && live(tiles[a][b]) ? 1 : 0;                     // live boosts only
+    const d = inside ? FB.d[a * FB.H + b] : Infinity;
+    out[5 * cells + k] = isFinite(d) ? Math.max(-2, Math.min(2, (d - dRef) / (R * TL))) : 2;
+  }
+  const o = CH2 * cells;
+  out.set(v1.subarray(o1, o1 + NS), o);                                          // the 12 version-1 numbers
+  let [ux, uy] = N.pathDir(FB, x, y);
+  if (!ux && !uy) [ux, uy] = downhill(FB, tx, ty); // the ball's own tile tied with the best one ahead
+  const est = N.heuristicTouch(FB, task.goal, x, y, vx, vy);
+  out[o + 12] = ux; out[o + 13] = uy;
+  out[o + 14] = isFinite(d0) ? Math.min(d0, 20) / 4 : 5;
+  out[o + 15] = Math.min(est, 1200) / 60 / 4;                                   // boost-aware time estimate
+  return out;
+}
+// direction to the neighbouring tile closest to the goal
+function downhill(F, tx, ty) {
+  let best = Infinity, dx = 0, dy = 0;
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+    if (!a && !b) continue;
+    const x = tx + a, y = ty + b; if (x < 0 || y < 0 || x >= F.W || y >= F.H) continue;
+    const v = F.d[x * F.H + y] + (a && b ? Math.SQRT2 : 1) * N.TILE;
+    if (v < best) { best = v; dx = a; dy = b; }
+  }
+  const L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L];
+}
+// what train.js needs to know about each version's layout
+const LAYOUT = {
+  1: { SIZE, CH, NS, est: SIZE - 2, vectors: [0, 2, 4, 7] },
+  2: { SIZE: SIZE2, CH: CH2, NS: NS2, est: SIZE2 - 1, vectors: [0, 2, 4, 7, 12] },
+};
+
+module.exports = { features, features2, SIZE, SIZE2, R, S, CH, CH2, NS, NS2, LAYOUT };
