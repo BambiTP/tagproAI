@@ -7,6 +7,8 @@
 //  - Pool: split the first moves across worker threads, each with its own copy of the game in lockstep
 //  - budgetMs: a time limit per decision; when it runs out, go with the best line found so far
 //  - est: a different time-left estimate, est(task, x, y, vx, vy) in ticks (e.g. a trained network)
+//  - boosts: estimate with the route field that treats live boosts as shortcuts (nav.boostField); true or
+//    { setup, keep } settings
 const { isMainThread, parentPort, Worker, workerData } = require('worker_threads');
 const N = require('./nav');
 const { Sim, getMap, setKeys } = require('./sim');
@@ -38,12 +40,14 @@ function calmAt(hz, x, y, vx, vy) {
 }
 
 // returns { line, f }: the best line of keys found and its estimated total ticks
-function makeSearch2({ width = 16, depth = 8, calmWidth = 8, calmDepth = 4, adaptive = true, prune = false, budgetMs = Infinity, est: estOverride = null } = {}) {
+function makeSearch2({ width = 16, depth = 8, calmWidth = 8, calmDepth = 4, adaptive = true, prune = false, budgetMs = Infinity, est: estOverride = null, boosts = false } = {}) {
   return function search(task, sim, p, firsts = ALL) {
     const deadline = performance.now() + budgetMs;
     let out = false;
     const done_ = N.goalCheck(task), hand = task.touch ? N.heuristicTouch : N.heuristic;
-    const est = estOverride ? (F_, g_, x, y, vx, vy) => estOverride(task, x, y, vx, vy) : hand;
+    const FB = boosts && task.touch ? N.boostField(task, sim.tiles, 1, boosts === true ? undefined : boosts) : null;
+    const est = estOverride ? (F_, g_, x, y, vx, vy) => estOverride(task, x, y, vx, vy)
+      : FB ? (F_, g, x, y, vx, vy) => N.heuristicTouch(FB, g, x, y, vx, vy) : hand;
     const q0 = p.body.GetPosition(), v0 = p.body.GetLinearVelocity();
     const calm = adaptive && calmAt(hazards(task.F.tiles), q0.x, q0.y, v0.x, v0.y);
     const W = calm ? calmWidth : width, D = calm ? calmDepth : depth;

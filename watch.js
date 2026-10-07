@@ -249,7 +249,7 @@ const jsonl = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').
 function recorded() {
   let puzzles = 0, decisions = 0, failed = 0;
   if (!fs.existsSync(TRAIN)) return { puzzles, decisions, failed };
-  for (const f of fs.readdirSync(TRAIN).filter((f) => /^d\d+\.log$/.test(f)))
+  for (const f of fs.readdirSync(TRAIN).filter((f) => /^[db]\d+\.log$/.test(f)))
     for (const r of jsonl(path.join(TRAIN, f))) if (r.rows) { puzzles++; decisions += r.rows; } else if (r.result) failed++;
   return { puzzles, decisions, failed };
 }

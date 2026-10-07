@@ -15,6 +15,7 @@ const VERSIONS = {
   multi: { prune: true, keep: 2, threads: 3 },             // + 3 threads
   multi1: { prune: true, threads: 3 },                     // 3 threads, replan every move
   live: { prune: true, keep: 2, threads: 3, budgetMs: 110 }, // multi with a time limit (leaves 23 ms spare)
+  boost2: { prune: true, keep: 2, boosts: true },         // keep2 with boosts as shortcuts in its route estimate
   net: { net: true },                                      // the network alone: its top move, no search
   guided: { prune: true, keep: 2, guided: true },          // keep2 with the network's time-left estimate
 };

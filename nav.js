@@ -19,7 +19,8 @@ function plain(t) { return PLAIN.has(typeof t === 'string' ? parseFloat(t) : t);
 
 // path distance (m) from each tile centre to the goal tile; 8-connected, no corner cutting,
 // tiles next to a spike or a lethal gate cost extra so paths keep clear of them
-function field(tiles, gx, gy) {
+// boosts (optional, touch tasks): `boostTeam` 1 or 2 adds the live boosts that team can use as shortcuts
+function field(tiles, gx, gy, boostTeam = 0, boostOpts = BOOST_DEFAULT) {
   const W = tiles.length, H = tiles[0].length, n = W * H;
   const ok = new Uint8Array(n), pen = new Float32Array(n);
   for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
@@ -33,9 +34,12 @@ function field(tiles, gx, gy) {
   const heap = [[0, gx * H + gy]]; d[gx * H + gy] = 0;
   const push = (e) => { heap.push(e); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
   const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  const rev = boostTeam ? boostEdges(tiles, ok, W, H, boostTeam, boostOpts) : null;
   while (heap.length) {
     const [c, k] = pop();
     if (c > d[k]) continue;
+    // a boost that launches the ball through this tile can get here quickly
+    if (rev && rev.has(k)) for (const [b, cost] of rev.get(k)) if (c + cost < d[b]) { d[b] = c + cost; push([c + cost, b]); }
     const x = (k / H) | 0, y = k - x * H;
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
       if (!dx && !dy) continue;
@@ -48,7 +52,62 @@ function field(tiles, gx, gy) {
       if (nc < d[nk]) { d[nk] = nc; push([nc, nk]); }
     }
   }
-  return { d, W, H, tiles, ok };
+  return { d, W, H, tiles, ok, boosts: !!boostTeam };
+}
+
+// ---------- boosts as shortcuts ----------
+// A boost sets the ball to 7.5 m/s (3x top speed; up to 10.6 on a diagonal) in the direction it's already
+// moving, and keys can't push back past top speed, so a launched ball covers ground about 3 times faster for
+// a long way. From each live boost the ball can be launched in 16 directions: every tile along a launch line,
+// up to a wall or short of a spike, is reachable from the boost at its distance x (top speed / launch speed),
+// plus a small cost for lining up the launch. Returned reversed (tile -> [boost, cost]) for the goal-first search.
+const BOOST_V = 7.5, BOOST_REACH = 8, BOOST_DIRS = 16;
+// setup: extra cost for lining up a launch (m); keep: share of launch speed kept on average against drag.
+// No setting is best everywhere (boost test: each fixes some puzzles and breaks others), so gen2.js tries several.
+const BOOST_DEFAULT = { setup: 0.3, keep: 0.85 };
+const liveBoost = (t, team) => { const v = parseFloat(t); return v === 5 || (team === 1 && v === 14) || (team === 2 && v === 15); };
+function boostEdges(tiles, ok, W, H, team, { setup, keep } = BOOST_DEFAULT) {
+  const rev = new Map(), r = 0.185;
+  const fits = (x, y) => {
+    for (const [ox, oy] of [[-r, -r], [r, -r], [-r, r], [r, r], [0, 0]]) {
+      const tx = Math.round((x + ox) / TILE), ty = Math.round((y + oy) / TILE);
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H || !ok[tx * H + ty]) return false;
+    }
+    return true;
+  };
+  const nearSpike = (x, y) => {
+    const tx = Math.round(x / TILE), ty = Math.round(y / TILE);
+    for (let a = tx - 2; a <= tx + 2; a++) for (let b = ty - 2; b <= ty + 2; b++) {
+      if (a < 0 || b < 0 || a >= W || b >= H) continue;
+      const v = parseFloat(tiles[a][b]);
+      if ((v === 7 || v === 9.1 || v === 9.3) && Math.hypot(x - a * TILE, y - b * TILE) < 0.45) return true;
+    }
+    return false;
+  };
+  for (let bx = 0; bx < W; bx++) for (let by = 0; by < H; by++) {
+    if (!liveBoost(tiles[bx][by], team)) continue;
+    const bk = bx * H + by, best = new Map();
+    for (let i = 0; i < BOOST_DIRS; i++) {
+      const th = i * 2 * Math.PI / BOOST_DIRS, c = Math.cos(th), sn = Math.sin(th);
+      const v = BOOST_V / Math.max(Math.abs(c), Math.abs(sn)), factor = MS / (keep * v); // some speed is lost to drag on the way
+      for (let st = 0.1; st <= BOOST_REACH; st += 0.1) {
+        const x = bx * TILE + c * st, y = by * TILE + sn * st;
+        if (!fits(x, y) || nearSpike(x, y)) break;
+        const k = Math.round(x / TILE) * H + Math.round(y / TILE), cost = st * factor + setup;
+        if (k !== bk && (!best.has(k) || cost < best.get(k))) best.set(k, cost);
+      }
+    }
+    for (const [k, cost] of best) { if (!rev.has(k)) rev.set(k, []); rev.get(k).push([bk, cost]); }
+  }
+  return rev;
+}
+// the route field for a touch task with the boosts that are live right now (redone when one gets used)
+function boostField(task, tiles, team = 1, opts = BOOST_DEFAULT) {
+  let key = opts.setup + '/' + opts.keep + ':';
+  for (let x = 0; x < tiles.length; x++) for (let y = 0; y < tiles[0].length; y++) if (liveBoost(tiles[x][y], team)) key += x + ',' + y + ';';
+  task._bf = task._bf || new Map();
+  if (!task._bf.has(key)) task._bf.set(key, field(tiles, Math.round(task.goal.x / TILE), Math.round(task.goal.y / TILE), team, opts));
+  return task._bf.get(key);
 }
 
 // can a ball travel the straight segment without touching a blocked tile
@@ -152,7 +211,17 @@ function tReach(d, v) {
 }
 function heuristicTouch(F, goal, x, y, vx, vy) {
   let d, ux, uy;
-  if (clearLine(F, x, y, goal.x, goal.y)) {
+  const clear = clearLine(F, x, y, goal.x, goal.y);
+  // with boost shortcuts the route through a boost can beat even a clear straight line
+  if (clear && F.boosts) {
+    const ds = Math.hypot(goal.x - x, goal.y - y), sx = (goal.x - x) / (ds || 1), sy = (goal.y - y) / (ds || 1);
+    const straight = Math.max(tReach(ds - BALL_R, vx * sx + vy * sy), t1(0, -vx * sy + vy * sx) * 0.5);
+    const df = fieldAt(F, x, y);
+    if (!(df < ds - 0.2)) return straight;
+    const [px, py] = pathDir(F, x, y);
+    return Math.min(straight, Math.max(tReach(df - BALL_R, vx * px + vy * py), t1(0, -vx * py + vy * px) * 0.5));
+  }
+  if (clear) {
     d = Math.hypot(goal.x - x, goal.y - y); ux = (goal.x - x) / (d || 1); uy = (goal.y - y) / (d || 1);
   } else {
     d = fieldAt(F, x, y);
@@ -268,4 +337,4 @@ function makeSearch({ width = 16, depth = 6 } = {}) {
   };
 }
 
-module.exports = { field, fieldAt, pathDir, heuristic, heuristicTouch, t1, tReach, arrived, touched, goalCheck, BALL_R, makeTask, baseline, makeSearch, clearLine, K, MAX_TICKS, TILE, mapKeys, Sim, setKeys, ACTIONS };
+module.exports = { field, boostField, fieldAt, pathDir, heuristic, heuristicTouch, t1, tReach, arrived, touched, goalCheck, BALL_R, makeTask, baseline, makeSearch, clearLine, K, MAX_TICKS, TILE, mapKeys, Sim, setKeys, ACTIONS };

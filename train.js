@@ -31,7 +31,10 @@ function symmetric(src, dst, k) {
 
 function load() {
   const dir = path.join(__dirname, 'runs', 'train');
-  const parts = fs.readdirSync(dir).filter((f) => f.endsWith('.bin')).map((f) => fs.readFileSync(path.join(dir, f)));
+  // TRAIN_FILES=b,h uses only recordings whose names start with those letters (b: gen2.js, h: humangen.js)
+  const want = process.env.TRAIN_FILES ? process.env.TRAIN_FILES.split(',') : null;
+  const parts = fs.readdirSync(dir).filter((f) => f.endsWith('.bin') && (!want || want.some((w) => f.startsWith(w))))
+    .map((f) => fs.readFileSync(path.join(dir, f)));
   const chunks = parts.map((b) => {
     const k = Math.floor(b.length / 4 / ROW) * ROW; // whole rows only: a recorder may be mid-write
     return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + k * 4));
