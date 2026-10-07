@@ -1,5 +1,6 @@
 // speed.js - time versions of the planning bot on the same touch puzzles.
 //   node speed.js <version> [first=101] [n=40]   (one JSON line per puzzle, then a summary line)
+//   SEEDS=a,b,c node speed.js <version>         (those puzzles only)
 // Live play needs each decision done before its moves run out: keep x 4 ticks = keep x 66.7 ms.
 const { performance } = require('perf_hooks');
 const F = require('./fastsearch'), N = require('./nav');
@@ -54,7 +55,9 @@ async function run(seed, v) {
   const v = VERSIONS[name];
   if (!v) throw new Error('versions: ' + Object.keys(VERSIONS).join(', '));
   const out = [];
-  for (let s = +first; s < +first + +n; s++) {
+  // SEEDS=1,2,3 runs exactly those puzzles instead of a range (e.g. the boost test)
+  const list = process.env.SEEDS ? process.env.SEEDS.split(',').map(Number) : Array.from({ length: +n }, (_, i) => +first + i);
+  for (const s of list) {
     if (s === 124) continue; // starts inside a gravity well's pull
     const r = await run(s, v); out.push(r); console.log(JSON.stringify(r));
   }

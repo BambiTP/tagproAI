@@ -319,6 +319,7 @@ module.exports = function startArena(ctx) {
     const end = run.result === 'arrived' || run.result === 'pop' ? run.result : ks.length >= N.MAX_TICKS ? 'timeout' : 'restart';
     u.open = null;
     const entry = { u: key, seed: open.seed, at: now(), end, ticks: run.ticks, idle: ks.every((k) => k === 0), claimed: ENDS.includes(body.end) ? body.end : null };
+    if (end === 'arrived') entry.keys = ks; // every finished run's keys, so it can become training lessons later
     const cur = session(u, open.seed), recBefore = recordOf(open.seed), wrBefore = wrOf(open.seed);
     tally(cur, entry);
     let best = false;
