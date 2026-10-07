@@ -1,0 +1,442 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>TagPro AI Arena</title>
+<style>
+body{margin:0;background:#111;color:#ddd;font:14px system-ui,sans-serif;overflow-x:hidden}
+#tabs{display:flex;gap:4px;padding:8px 12px 0;background:#1c1c1c}
+#tabs button{background:#262626;color:#aaa;border:0;border-radius:6px 6px 0 0;padding:8px 18px;font:inherit;cursor:pointer}
+#tabs button.on{background:#111;color:#fff;font-weight:600}
+.tab{display:none}.tab.on{display:block}
+.hud{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:8px 12px;font-size:14px}
+.big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:#fff}
+.you{color:#5f5}.s{color:#ff6b6b}.b{color:#6bb5ff}.dim{color:#888}
+canvas.map{display:block;margin:0 auto;max-width:100%}
+#card{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);background:#1d1d1dee;border:1px solid #444;
+ border-radius:10px;padding:18px 26px;font-size:17px;line-height:1.7;display:none;min-width:280px;text-align:center}
+#card h2{margin:0 0 6px;font-size:24px}
+.btn2{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;padding:3px 10px;font:inherit;cursor:pointer}.btn2:disabled{opacity:.4}
+.bar{height:4px;background:#333;border-radius:2px;margin-top:8px;overflow:hidden}.bar i{display:block;height:100%;background:#4ade4a;width:100%}
+#count{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);font-size:90px;font-weight:800;color:#fff;
+ text-shadow:0 0 12px #000;display:none;pointer-events:none}
+select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;padding:3px 6px;font:inherit}
+#graphs{padding:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}
+.panel{background:#1a1a1a;border-radius:8px;padding:12px}
+.panel h3{margin:0 0 4px;font-size:15px;color:#fff}.panel p{margin:0 0 8px;color:#999;font-size:12.5px}
+#sum{display:flex;flex-wrap:wrap;gap:12px;padding:12px 12px 0}
+#sum div{background:#1a1a1a;border-radius:8px;padding:10px 16px}#sum b{display:block;font-size:22px;color:#fff}
+@media (max-width:500px){#graphs{grid-template-columns:1fr}}
+</style>
+<script src="engine/box2d.js"></script><script src="engine/constants.js"></script><script src="engine/game.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head><body>
+<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
+
+<div id="play" class="tab on">
+ <div class="hud">
+  <span>Puzzle <b id="pSeed" class="big">–</b></span><span class="big" id="pTime">0.00 s</span>
+  <span id="pTry" class="dim"></span>
+  <span class="dim">Arrows or WASD · touch the centre of the <span style="color:#3f3">green cross</span> (any speed) · R retries · N next · B back</span>
+ </div>
+ <div class="hud" style="padding-top:0">
+  <select id="pList"><option value="order">All puzzles in order</option><option value="slow">Slow ones (25%+ behind the planning bot)</option></select>
+  <button class="btn2" id="bback">◀ Back (B)</button><button class="btn2" id="bnext">Skip ▶ (N)</button>
+  <span class="dim">ghosts:</span> <span id="pPick"></span>
+ </div>
+ <canvas id="pc" class="map"></canvas>
+</div>
+
+<div id="watch" class="tab">
+ <div class="hud">
+  <span>Puzzle <b id="wSeed" class="big">–</b></span><span class="big" id="wTime">0.00 s</span>
+  <select id="wSpeed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+  <span id="wPick"></span>
+ </div>
+ <div class="hud" style="padding-top:0"><span id="wInfo"></span>
+ </div>
+ <canvas id="wc" class="map"></canvas>
+</div>
+
+<div id="graphs-tab" class="tab">
+ <div id="sum"></div>
+ <div id="graphs">
+  <div class="panel"><h3>Planning bot against simple bot</h3><p>Each dot is one puzzle both bots finished. Dots below the dashed line are puzzles where the planning bot was faster.</p><canvas id="b1"></canvas></div>
+  <div class="panel"><h3>Time against distance</h3><p>Time to touch the target against the length of the shortest route, in tiles. The grey line is the time for driving that distance in a straight line at full speed from a standstill, a rough best case.</p><canvas id="b2"></canvas></div>
+  <div class="panel"><h3>How each bot's puzzles ended</h3><p>Touched the target, died on a spike, or ran out of time (15 seconds).</p><canvas id="b3"></canvas></div>
+  <div class="panel"><h3>Average speed on each puzzle</h3><p>Distance driven divided by time, in tiles per second. Full speed on plain floor is 6.25.</p><canvas id="b4"></canvas></div>
+  <div class="panel"><h3>Planning bot's thinking time</h3><p>Seconds of computing for each second of game time. Above the dashed line, it can't keep up with a live game (it shares this machine with a second worker).</p><canvas id="b5"></canvas></div>
+  <div class="panel"><h3>By map</h3><p>Planning bot's time divided by the simple bot's, averaged over each map's puzzles. Below 1 means planning was faster on that map.</p><canvas id="b6"></canvas></div>
+ </div>
+ <h3 style="padding:4px 12px 0;margin:0;color:#fff">You</h3>
+ <div id="graphs2" style="padding:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px">
+  <div class="panel"><h3>Your time against both bots</h3><p>Seconds to touch the target on puzzles you've finished. Shorter is better.</p><canvas id="y1"></canvas></div>
+  <div class="panel"><h3>Your time compared with the planning bot</h3><p>Your best time divided by the planning bot's. Below the dashed line means you beat it. The thick line is the average of your last 5 puzzles.</p><canvas id="y2"></canvas></div>
+ </div>
+</div>
+<div id="learning" class="tab">
+ <div id="lsum" style="display:flex;flex-wrap:wrap;gap:12px;padding:12px 12px 0"></div>
+ <div style="padding:12px"><div class="panel"><h3>Notes from Claude</h3><p>Plain-language explanations of what's happening, written at milestones and about every half hour.</p><div id="notes"></div></div></div>
+ <div class="lgrid" style="padding:0 12px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px">
+  <div class="panel"><h3>Lessons recorded</h3><p>Puzzles the planning bot has played for the network to learn from, over time. Every move in them is one lesson.</p><canvas id="l1"></canvas></div>
+  <div class="panel"><h3>Picking the same move as the planning bot</h3><p>On puzzles the network never trained on, how often its top move is the one the planning bot chose. One line per training run; each point is one pass over the data.</p><canvas id="l2"></canvas></div>
+  <div class="panel"><h3>Predicting time left</h3><p>Average error, in seconds, when guessing how long the ball still needs to touch the target. Below the dashed line (the hand-written formula) means the network is the better judge.</p><canvas id="l3"></canvas></div>
+  <div class="panel"><h3>Test drive: puzzle times</h3><p>On 39 test puzzles (101 to 140, never trained on): each bot's time divided by the current planning bot's, averaged over puzzles both finished. Below 1 is faster. The label shows how many puzzles it finished.</p><canvas id="l4"></canvas></div>
+  <div class="panel" style="grid-column:1/-1"><h3>Speed to the target</h3><p>On the 39 test puzzles: the length of the shortest route divided by the time taken, in tiles per second, averaged over the puzzles each one finished. Higher is better; full speed on plain floor is 6.25. The network gets one bar per training run, so you can see it improve.</p><canvas id="l6" height="90"></canvas></div>
+  <div class="panel"><h3>Test drive: thinking time</h3><p>Seconds of computing per second of game. Below the dashed line it's fast enough to play live. Logarithmic scale: each step is 10 times.</p><canvas id="l5"></canvas></div>
+ </div>
+</div>
+<div id="card"></div><div id="count"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const ACTIONS=[[0,0],[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
+const TOUCH_R=0.19; // done once the ball covers the goal point
+const C={you:'#4ade4a',s:'#ff4a4a',b:'#4a9bff'};
+// every ball that can be shown, in drawing order (later on top); `show` is shared by Play and Watch
+const BOTS=[{k:'baseline',name:'simple bot',col:C.b},{k:'fast',name:'fast planning bot',col:'#ff9a4a'},{k:'net',name:'network alone',col:'#c070e0'},
+ {k:'guided',name:'network-guided',col:'#e0c040'},{k:'search',name:'planning bot',col:C.s},{k:'you',name:'you',col:C.you}];
+let show={};try{show=JSON.parse(localStorage.getItem('tpShow')||'{}');}catch(e){}
+const shown=k=>show[k]!==false;
+function pickers(){for(const id of ['pPick','wPick']){const el=document.getElementById(id);if(!el)continue;
+ el.innerHTML=BOTS.map(b=>'<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" data-k="'+b.k+'"'+(shown(b.k)?' checked':'')+'> <span style="color:'+b.col+'">'+b.name+'</span></label>').join('');
+ el.querySelectorAll('input').forEach(i=>i.onchange=()=>{show[i.dataset.k]=i.checked;try{localStorage.setItem('tpShow',JSON.stringify(show));}catch(e){}pickers();});}}
+
+// ---------- the engine, headless in the browser (same as sim.js, minus save/restore) ----------
+const V=Box2D.Common.Math.b2Vec2;
+class BSim extends TPGame.GameRoom{
+ constructor(map){const clock={t:0};
+  super({id:'sim',map,isPrivate:true,now:()=>clock.t,settings:{disableAllPups:true,noAfkKick:true,time:1e9}});
+  this.clock=clock;this.queueT=[];this.seq=0;this.state=TPConstants.STATES.ACTIVE;this.stateEndsAt=Infinity;}
+ send(){} broadcast(){} broadcastP(){} snapshot(){} afkCheck(){}
+ flushDirty(){if(this.dirty)this.dirty.clear();} queue(){}
+ later(ms,fn){const h={at:this.clock.t+ms,seq:this.seq++,fn},q=this.queueT;let i=q.length;while(i>0&&q[i-1].at>h.at)i--;q.splice(i,0,h);return h;}
+ addBall(team=1){const c={emit(){},disconnect(){}};this.addClient(c,{publicId:'b'+this.nextPlayerId,name:'you'},{team});return this.players[c.playerId];}
+ place(p,x,y,vx,vy){p.dead=false;p.body.SetActive(true);p.body.SetPosition(new V(x,y));p.body.SetLinearVelocity(new V(vx,vy));p.body.SetAngularVelocity(0);p.body.SetAwake(true);}
+ tickOnce(){this.clock.t+=1000/60;while(this.queueT.length&&this.queueT[0].at<=this.clock.t)this.queueT.shift().fn();this.step();}
+}
+function setKeys(p,a){const[dx,dy]=ACTIONS[a];p.keys.left=dx<0;p.keys.right=dx>0;p.keys.up=dy<0;p.keys.down=dy>0;}
+
+// ---------- drawing ----------
+function circ(g,x,y,r){g.beginPath();g.arc(x,y,r,0,7);g.fill();}
+function star(g,x,y,r,n){g.beginPath();for(let i=0;i<2*n;i++){const a=i*Math.PI/n,rr=i%2?r*.45:r;g.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);}g.fill();}
+function tileDraw(g,t,x,y,s){
+ const v=parseFloat(t),f=Math.floor(v),X=x*s,Y=y*s,cx=X+s/2,cy=Y+s/2;
+ if(v===0)return;
+ g.fillStyle='#2b2b2b';g.fillRect(X,Y,s,s);
+ if(f===1){g.fillStyle='#787878';if(v===1){g.fillRect(X,Y,s,s);return;}g.beginPath();
+  if(v===1.1){g.moveTo(X,Y);g.lineTo(X,Y+s);g.lineTo(X+s,Y+s);}
+  else if(v===1.2){g.moveTo(X,Y);g.lineTo(X+s,Y);g.lineTo(X,Y+s);}
+  else if(v===1.3){g.moveTo(X,Y);g.lineTo(X+s,Y);g.lineTo(X+s,Y+s);}
+  else{g.moveTo(X+s,Y);g.lineTo(X+s,Y+s);g.lineTo(X,Y+s);}g.fill();return;}
+ if(v===7){g.fillStyle='#aaa';star(g,cx,cy,s*.42,8);return;}
+ if(f===9){g.fillStyle=v===9?'#555':v===9.1?'#3c8f3c':v===9.2?'#8f3c3c':'#3c4f8f';g.globalAlpha=.6;g.fillRect(X,Y,s,s);g.globalAlpha=1;return;}
+ if(f===5){g.fillStyle='#c8c832';circ(g,cx,cy,s*.3);return;}
+ if(f===6){g.fillStyle='#3cc83c';circ(g,cx,cy,s*.25);return;}
+ if(f===3||f===4){g.fillStyle=f===3?'#d33':'#36d';g.fillRect(X+s*.3,Y+s*.2,s*.45,s*.3);g.fillStyle='#ccc';g.fillRect(X+s*.28,Y+s*.2,s*.05,s*.6);return;}
+ if(f===8){g.fillStyle='#666';circ(g,cx,cy,s*.3);return;}
+ if(f===10){g.fillStyle='#222';circ(g,cx,cy,s*.4);return;}
+ if(f===13){g.fillStyle='#a050d0';circ(g,cx,cy,s*.4);return;}
+ if(f===14||f===15){g.fillStyle=f===14?'#d33':'#36d';circ(g,cx,cy,s*.3);return;}
+ const c={11:'#3a2424',12:'#24283a',17:'#4a2a2a',18:'#2a2f4a',23:'#3a3a3a'}[v];if(c){g.fillStyle=c;g.fillRect(X,Y,s,s);}
+}
+// a map view: background drawn once, then balls each frame. Positions are metres; tile i's centre is i*tile.
+class View{
+ constructor(cv){this.cv=cv;this.g=cv.getContext('2d');}
+ setMap(tiles,tile,goal,start){this.tiles=tiles;this.tile=tile;this.goal=goal;this.start=start;this.layout();}
+ layout(){const W=this.tiles.length,H=this.tiles[0].length;
+  this.px=Math.max(8,Math.min(40,Math.floor(Math.min((innerWidth-8)/W,(innerHeight-110)/H))));
+  const bg=document.createElement('canvas');bg.width=W*this.px;bg.height=H*this.px;const g=bg.getContext('2d');
+  for(let x=0;x<W;x++)for(let y=0;y<H;y++)tileDraw(g,this.tiles[x][y],x,y,this.px);
+  this.bg=bg;this.cv.width=bg.width;this.cv.height=bg.height;}
+ P(m){return (m/this.tile+.5)*this.px;}
+ base(){const g=this.g,px=this.px;g.drawImage(this.bg,0,0);
+  const gx=this.P(this.goal.x),gy=this.P(this.goal.y);
+  g.strokeStyle='#3f3';g.fillStyle='#3f3';g.lineWidth=2;circ(g,gx,gy,Math.max(3,px*.1));
+  g.beginPath();g.moveTo(gx-px*.6,gy);g.lineTo(gx+px*.6,gy);g.moveTo(gx,gy-px*.6);g.lineTo(gx,gy+px*.6);g.stroke();}
+ ball(x,y,color,alpha=1,keys=0,label=''){const g=this.g,r=this.px*.475,X=this.P(x),Y=this.P(y);
+  g.globalAlpha=alpha;g.fillStyle=color;circ(g,X,Y,r);g.strokeStyle='#000';g.lineWidth=1;g.stroke();
+  const[dx,dy]=ACTIONS[keys];if(dx||dy){const n=Math.hypot(dx,dy);g.strokeStyle='#fff';g.lineWidth=Math.max(1.5,this.px/12);
+   g.beginPath();g.moveTo(X,Y);g.lineTo(X+dx/n*r*1.6,Y+dy/n*r*1.6);g.stroke();}
+  if(label){g.fillStyle='#fff';g.font='bold '+Math.max(11,this.px/2.6)+'px sans-serif';g.fillText(label,X+r+3,Y-r);}
+  g.globalAlpha=1;}
+ trail(fr,upto,color,alpha){const g=this.g;g.strokeStyle=color;g.globalAlpha=alpha;g.lineWidth=Math.max(1,this.px/14);g.beginPath();
+  for(let k=0;k<=Math.min(upto,fr.length-1);k++)g.lineTo(this.P(fr[k][0]),this.P(fr[k][1]));g.stroke();g.globalAlpha=1;}
+ // a recorded run at tick t; once it has finished it stays put with its time on it
+ ghost(fr,t,color,alpha,name){if(!fr||!fr.length)return;const i=Math.min(t,fr.length-1),f=fr[i];
+  this.ball(f[0],f[1],color,alpha,f[2],t>=fr.length-1?name+' '+(fr.length/60).toFixed(2)+'s':'');}
+}
+const secs=t=>t==null?'—':(t/60).toFixed(2)+' s';
+const fmt=r=>!r?'still computing':r.result==='arrived'?secs(r.ticks):r.result==='pop'?'died on a spike':'ran out of time';
+
+// ---------- tabs ----------
+let tab='play';
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
+ tab=b.dataset.t;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
+ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));$(tab==='graphs'?'graphs-tab':tab).classList.add('on');
+ if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
+});
+
+// ---------- play ----------
+const pv=new View($('pc'));
+const held={};
+const KEYMAP={ArrowUp:'u',KeyW:'u',ArrowDown:'d',KeyS:'d',ArrowLeft:'l',KeyA:'l',ArrowRight:'r',KeyD:'r'};
+addEventListener('keydown',e=>{if(tab!=='play')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
+ if(e.code==='KeyR'&&(P.state==='run'||P.state==='count'||P.state==='done')){cancelAuto();restart();}
+ if((e.code==='KeyN'||e.code==='Enter')&&P.state!=='load')goNext();
+ if(e.code==='KeyB'&&P.state!=='load')goBack();});
+$('bnext').onclick=()=>{if(P.state!=='load')goNext();};
+$('bback').onclick=()=>{if(P.state!=='load')goBack();};
+$('pList').onchange=async()=>{P.list=$('pList').value;
+ if(P.list==='slow'){P.slow=await (await fetch('slow')).json();P.slowAt=0;
+  if(!P.slow.length){alert("No slow ones: you're within 25% of the planning bot everywhere you've finished.");$('pList').value=P.list='order';}}
+ newPuzzle();};
+// after a finish: next puzzle by itself after a short pause, unless R is pressed
+let autoTimer=null;
+function cancelAuto(){if(autoTimer){clearTimeout(autoTimer);autoTimer=null;}}
+function autoNext(ms){cancelAuto();const bar=document.querySelector('#card .bar i');
+ if(bar){bar.style.transition='none';bar.style.width='100%';requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.transition='width '+ms+'ms linear';bar.style.width='0%';}));}
+ autoTimer=setTimeout(()=>{autoTimer=null;if(tab==='play'&&P.state==='done')goNext(true);},ms);}
+// where Next and Back go: through the slow list, or through the puzzles in order
+async function goNext(auto){
+ cancelAuto();
+ if(P.list==='slow'){P.slowAt++;if(P.slowAt>=P.slow.length){$('pList').value=P.list='order';return newPuzzle();}return newPuzzle(P.slow[P.slowAt].seed);}
+ if(P.d.retry)return newPuzzle(P.d.after);
+ if(!auto&&P.state!=='done')await fetch('skip',{method:'POST'}); // skipping the puzzle you're on
+ newPuzzle();
+}
+function goBack(){
+ cancelAuto();
+ if(P.list==='slow'){if(P.slowAt>0)P.slowAt--;return newPuzzle(P.slow[P.slowAt].seed);}
+ if(P.d.prev)newPuzzle(P.d.prev);
+}
+addEventListener('keyup',e=>{const k=KEYMAP[e.code];if(k)held[k]=false;});
+addEventListener('blur',()=>{for(const k in held)held[k]=false;});
+function action(){const dx=(held.r?1:0)-(held.l?1:0),dy=(held.d?1:0)-(held.u?1:0);
+ return ACTIONS.findIndex(([a,b])=>a===dx&&b===dy);}
+
+const P={state:'load'};
+async function newPuzzle(seed){
+ cancelAuto();P.state='load';$('card').style.display='none';
+ if(seed===undefined&&P.list==='slow'&&P.slow&&P.slow[P.slowAt])seed=P.slow[P.slowAt].seed;
+ const d=await (await fetch('current'+(seed?'?seed='+seed:''))).json();
+ P.d=d;pv.setMap(d.map.tiles,d.tile,d.goal,d.start);
+ $('pSeed').textContent=d.seed;
+ $('pTry').textContent=(P.list==='slow'?'slow one '+(P.slowAt+1)+' of '+P.slow.length+' · ':'')+(d.retry?'retry · ':'try '+(d.fails+1)+' of '+d.maxFails+' · ')+'your best '+(d.yourBest?secs(d.yourBest):'—');
+ $('bback').disabled=P.list==='slow'?P.slowAt===0:!d.prev;
+ $('bnext').textContent=(d.retry||P.list==='slow'?'Next':'Skip')+' ▶ (N)';
+ restart();
+}
+function restart(){
+ const d=P.d;P.sim=new BSim(JSON.parse(JSON.stringify(d.map)));P.p=P.sim.addBall(1);
+ P.sim.place(P.p,d.start.x,d.start.y,d.start.vx,d.start.vy);
+ P.keys=[];P.t=0;P.acc=0;P.state='count';P.countEnd=performance.now()+2000;P.tryNo=(P.tryNo||0)+1;
+ $('card').style.display='none';
+}
+function stepPlay(dt){
+ if(P.state==='count'){const left=P.countEnd-performance.now();
+  $('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/667);
+  if(left<=0){P.state='run';P.acc=0;} return;}
+ if(P.state!=='run')return;
+ P.acc+=dt*60;let n=0;
+ while(P.acc>=1&&n<5){P.acc--;n++;
+  const a=action();P.keys.push(a);setKeys(P.p,a);P.sim.tickOnce();P.t++;
+  const q=P.p.body.GetPosition(),v=P.p.body.GetLinearVelocity();
+  let res=null;
+  if(P.p.dead)res='pop';
+  else if(Math.hypot(q.x-P.d.goal.x,q.y-P.d.goal.y)<(P.d.touchR||TOUCH_R))res='arrived';
+  else if(P.t>=P.d.maxTicks)res='timeout';
+  if(res){finish(res);break;}
+ }
+ if(P.acc>5)P.acc=0;
+}
+async function finish(res){
+ P.state='done';P.result=res;const no=P.tryNo;
+ const r=await (await fetch('submit',{method:'POST',body:JSON.stringify({seed:P.d.seed,keys:P.keys,result:res})})).json();
+ if(no!==P.tryNo||P.state!=='done')return; // R was pressed while this was on its way: don't cover the new try
+ const c=$('card');
+ if(r.error){c.innerHTML='<h2>Hmm</h2>'+r.error;c.style.display='block';setTimeout(newPuzzle,2500);return;}
+ const b=r.bots;let head,line='';
+ if(r.result==='arrived'){
+  const beatS=b&&(b.search.result!=='arrived'||r.ticks<b.search.ticks), beatB=b&&(b.baseline.result!=='arrived'||r.ticks<b.baseline.ticks);
+  head=!b?'Made it!':beatS&&beatB?'You beat both bots!':beatS?'You beat the planning bot!':beatB?'You beat the simple bot':'Made it, but both bots were faster';
+  if(r.best&&P.d.ghosts.you)line='<div class=you>New personal best</div>';
+ } else head=r.result==='pop'?'Popped on a spike':'Out of time';
+ c.innerHTML='<h2>'+head+'</h2>'+line+
+  '<div class=you>You: '+(r.result==='arrived'?secs(r.ticks):'—')+'</div>'+
+  '<div class=s>Planning bot: '+fmt(b&&b.search)+'</div><div class=b>Simple bot: '+fmt(b&&b.baseline)+'</div>'+
+  (res!==r.result?'<div class=dim>(the server\'s replay disagreed with your browser; the server\'s result counts)</div>':'')+
+  (r.result==='arrived'?'<div class=dim>Next puzzle in a moment · <b>R</b> try again · <b>N</b> go now</div><div class="bar"><i></i></div>'
+   :'<div class=dim>'+(r.next!==P.d.next&&!P.d.retry?'Moving on…':'Trying again…')+' <b>N</b> skip</div>');
+ c.style.display='block';
+ if(r.result==='arrived'){if(r.best)P.d.yourBest=r.ticks;autoNext(2500);}
+ else{cancelAuto();autoTimer=setTimeout(()=>{autoTimer=null;if(tab!=='play'||P.state!=='done')return;
+  if(!P.d.retry&&r.next!==P.d.seed)newPuzzle();else restart();},1300);}
+}
+function drawPlay(){
+ if(!P.d||P.state==='load')return;
+ pv.base();const gh=P.d.ghosts,t=P.state==='count'?0:P.t;
+ for(const b of BOTS)if(shown(b.k)&&gh[b.k])pv.ghost(gh[b.k],t,b.col,b.k==='you'?.3:.35,b.k==='you'?'your best':b.name);
+ const q=P.p.body.GetPosition();
+ pv.ball(q.x,q.y,C.you,P.p.dead?.3:1,P.state==='run'?action():0);
+ $('pTime').textContent=(t/60).toFixed(2)+' s';
+}
+
+// ---------- watch: bots on every ready puzzle, round and round ----------
+const wv=new View($('wc'));
+const W={d:null,t:0,acc:0,endAt:0};
+async function nextWatch(){
+ const r=await fetch('watch?seed='+(W.d?W.d.seed:0));
+ if(r.status!==200){$('wInfo').textContent='The bots are still working on the first puzzles…';setTimeout(nextWatch,5000);return;}
+ W.d=await r.json();W.t=0;W.acc=0;W.endAt=0;
+ wv.setMap(W.d.tiles,W.d.tile,W.d.goal,W.d.start);$('wSeed').textContent=W.d.seed;
+ const d=W.d;
+ $('wInfo').innerHTML=BOTS.filter(b=>d[b.k]).map(b=>'<span style="color:'+b.col+'">'+b.name+': '+(b.k==='you'?secs(d.you.ticks):fmt(d[b.k]))+'</span>').join(' · ')+
+  (d.you?'':' · <span class=dim>you haven\'t finished this one yet</span>')+
+  (d.net?'':' · <span class=dim>network bots appear once a trained network is released</span>')+
+  (d.fast?'':' · <span class=dim>fast planning bot still computing</span>');
+}
+function stepWatch(dt){
+ if(!W.d)return;const len=Math.max(1,...BOTS.filter(b=>W.d[b.k]&&shown(b.k)).map(b=>W.d[b.k].frames.length));
+ if(W.t<len-1){W.acc+=dt*60*$('wSpeed').value;while(W.acc>=1&&W.t<len-1){W.acc--;W.t++;}}
+ else if(!W.endAt)W.endAt=performance.now()+2000;
+ else if(performance.now()>W.endAt){W.endAt=Infinity;nextWatch();}
+}
+function drawWatch(){
+ if(!W.d)return;const d=W.d;wv.base();
+ const on=BOTS.filter(b=>d[b.k]&&shown(b.k));
+ for(const b of on)wv.trail(d[b.k].frames,W.t,b.col,.4);
+ for(const b of on)wv.ghost(d[b.k].frames,W.t,b.col,1,b.name);
+ $('wTime').textContent=(W.t/60).toFixed(2)+' s';
+}
+
+// ---------- graphs ----------
+const charts={};
+if(typeof Chart!=='undefined'){Chart.defaults.color='#aaa';Chart.defaults.borderColor='#2c2c2c';}
+function chart(id,cfg){if(charts[id])charts[id].destroy();charts[id]=new Chart($(id),cfg);}
+const tm=r=>r&&r.result==='arrived'?+(r.ticks/60).toFixed(2):null;
+// time (s) to drive d tiles in a straight line from a standstill, holding one key
+function straightLine(maxTiles){const pts=[];let v=0,x=0,t=0;
+ for(let d=0;d<=maxTiles;d+=0.5){while(x<d*0.4){v*=1-0.5/60;x+=v/60;if(v<2.5)v+=0.025;t++;}pts.push({x:d,y:+(t/60).toFixed(2)});}return pts;}
+async function drawGraphs(){
+ if(typeof Chart==='undefined'){$('graphs').innerHTML='<p>The chart library didn\'t load (it comes from cdnjs.cloudflare.com, so the laptop needs internet).</p>';return;}
+ const st=await (await fetch('stats')).json();
+ const B=st.rows.filter(r=>r.search), ok=x=>x&&x.result==='arrived', both=B.filter(r=>ok(r.search)&&ok(r.baseline));
+ const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0, sec=x=>+(x/60).toFixed(2);
+ const faster=both.filter(r=>r.search.ticks<r.baseline.ticks).length;
+ const mine=st.rows.filter(r=>r.you!=null), mineB=mine.filter(r=>r.search);
+ const beat=mineB.filter(r=>!ok(r.search)||r.you<r.search.ticks).length;
+ $('sum').innerHTML=[['Puzzles the bots have done',B.length],
+  ['Planning bot finished',B.filter(r=>ok(r.search)).length+' of '+B.length],['Simple bot finished',B.filter(r=>ok(r.baseline)).length+' of '+B.length],
+  ['Planning bot faster',faster+' of '+both.length],
+  ['Average time (both finished)',sec(avg(both.map(r=>r.search.ticks)))+' s vs '+sec(avg(both.map(r=>r.baseline.ticks)))+' s'],
+  ['You beat the planning bot',beat+' of '+mineB.length]].map(([k,v])=>'<div>'+k+'<b>'+v+'</b></div>').join('');
+ const lab=(c)=>({callbacks:{label:c}}), mx=Math.max(1,...both.map(r=>sec(Math.max(r.search.ticks,r.baseline.ticks))));
+ chart('b1',{type:'scatter',data:{datasets:[
+  {label:'Puzzle',data:both.map(r=>({x:sec(r.baseline.ticks),y:sec(r.search.ticks),seed:r.seed})),backgroundColor:both.map(r=>r.search.ticks<r.baseline.ticks?C.s:C.b)},
+  {label:'Same time',type:'line',data:[{x:0,y:0},{x:mx,y:mx}],borderColor:'#888',borderDash:[6,4],pointRadius:0,borderWidth:1}]},
+  options:{plugins:{tooltip:lab(c=>c.raw.seed?'puzzle '+c.raw.seed+': planning '+c.raw.y+' s, simple '+c.raw.x+' s':'')},
+   scales:{x:{title:{display:true,text:'simple bot (seconds)'},min:0},y:{title:{display:true,text:'planning bot (seconds)'},min:0}}}});
+ const pm=Math.ceil(Math.max(1,...B.map(r=>r.pathTiles)));
+ const pt=k=>B.filter(r=>ok(r[k])).map(r=>({x:+r.pathTiles.toFixed(1),y:sec(r[k].ticks),seed:r.seed}));
+ chart('b2',{type:'scatter',data:{datasets:[
+  {label:'Planning bot',data:pt('search'),backgroundColor:C.s},{label:'Simple bot',data:pt('baseline'),backgroundColor:C.b},
+  {label:'Straight line, full speed',type:'line',data:straightLine(pm),borderColor:'#888',pointRadius:0,borderWidth:1.5}]},
+  options:{plugins:{tooltip:lab(c=>c.raw.seed?'puzzle '+c.raw.seed+': '+c.raw.x+' tiles, '+c.raw.y+' s':'')},
+   scales:{x:{type:'linear',title:{display:true,text:'shortest route (tiles)'},min:0},y:{title:{display:true,text:'seconds'},min:0}}}});
+ const cnt=(k,res)=>B.filter(r=>r[k].result===res).length;
+ chart('b3',{type:'bar',data:{labels:['Planning bot','Simple bot'],datasets:[
+  {label:'Touched the target',data:[cnt('search','arrived'),cnt('baseline','arrived')],backgroundColor:'#4caf50'},
+  {label:'Spike',data:[cnt('search','pop'),cnt('baseline','pop')],backgroundColor:'#e0a030'},
+  {label:'Out of time',data:[cnt('search','timeout'),cnt('baseline','timeout')],backgroundColor:'#777'}]},
+  options:{scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{precision:0}}}}});
+ chart('b4',{type:'line',data:{labels:B.map(r=>r.seed),datasets:[
+  {label:'Planning bot',data:B.map(r=>ok(r.search)?+r.search.avgSpeed.toFixed(2):null),borderColor:C.s,backgroundColor:C.s,pointRadius:2,spanGaps:true},
+  {label:'Simple bot',data:B.map(r=>ok(r.baseline)?+r.baseline.avgSpeed.toFixed(2):null),borderColor:C.b,backgroundColor:C.b,pointRadius:2,spanGaps:true}]},
+  options:{scales:{x:{title:{display:true,text:'puzzle'}},y:{title:{display:true,text:'tiles per second'},min:0,max:7}}}});
+ const T=B.filter(r=>r.searchMs);
+ chart('b5',{type:'bar',data:{labels:T.map(r=>r.seed),datasets:[
+  {label:'Computing seconds per game second',data:T.map(r=>+(r.searchMs/1000/(r.search.ticks/60)).toFixed(2)),backgroundColor:'#c070e0'},
+  {label:'Real time',type:'line',data:T.map(()=>1),borderColor:'#888',borderDash:[6,4],pointRadius:0,borderWidth:1}]},
+  options:{scales:{x:{title:{display:true,text:'puzzle'}},y:{beginAtZero:true}}}});
+ const byMap={};for(const r of both)(byMap[r.map]=byMap[r.map]||[]).push(r.search.ticks/r.baseline.ticks);
+ const maps=Object.entries(byMap).map(([m,v])=>({m,v:avg(v),n:v.length})).sort((a,b)=>a.v-b.v);
+ chart('b6',{type:'bar',data:{labels:maps.map(x=>x.m),datasets:[
+  {label:'Planning ÷ simple',data:maps.map(x=>+x.v.toFixed(2)),backgroundColor:maps.map(x=>x.v<1?C.s:C.b)},
+  {label:'Even',type:'line',data:maps.map(()=>1),borderColor:'#888',borderDash:[6,4],pointRadius:0,borderWidth:1}]},
+  options:{plugins:{tooltip:lab(c=>c.datasetIndex?'':c.raw+' over '+maps[c.dataIndex].n+' puzzle(s)')},
+   scales:{x:{title:{display:true,text:'map'}},y:{beginAtZero:true}}}});
+ chart('y1',{type:'bar',data:{labels:mine.map(r=>r.seed),datasets:[
+  {label:'You (best)',data:mine.map(r=>sec(r.you)),backgroundColor:C.you},
+  {label:'Planning bot',data:mine.map(r=>ok(r.search)?sec(r.search.ticks):null),backgroundColor:C.s},
+  {label:'Simple bot',data:mine.map(r=>ok(r.baseline)?sec(r.baseline.ticks):null),backgroundColor:C.b}]},
+  options:{scales:{x:{title:{display:true,text:'puzzle'}},y:{title:{display:true,text:'seconds'},beginAtZero:true}}}});
+ const ratio=mineB.filter(r=>ok(r.search)).map(r=>({seed:r.seed,v:r.you/r.search.ticks}));
+ const roll=ratio.map((_,i)=>avg(ratio.slice(Math.max(0,i-4),i+1).map(x=>x.v)));
+ chart('y2',{type:'line',data:{labels:ratio.map(r=>r.seed),datasets:[
+  {label:'You ÷ planning bot',data:ratio.map(r=>+r.v.toFixed(2)),borderColor:'#4ade4a88',backgroundColor:C.you,showLine:false,pointRadius:4},
+  {label:'Average of last 5',data:roll.map(v=>+v.toFixed(2)),borderColor:C.you,borderWidth:3,pointRadius:0,tension:.3},
+  {label:'Even',data:ratio.map(()=>1),borderColor:'#888',borderDash:[6,4],pointRadius:0,borderWidth:1}]},
+  options:{scales:{x:{title:{display:true,text:'puzzle'}},y:{title:{display:true,text:'your time ÷ bot time'},suggestedMin:.5,suggestedMax:2}}}});
+}
+
+// ---------- learning ----------
+const VNAME={current:'Planning bot',live:'Fast planning bot (3 cores)',keep2:'Fast planning bot',prune:'Planning bot, pruned'};
+const vname=k=>VNAME[k]||(k.replace(/^net-run(\d+)$/,'Network alone, run $1').replace(/^guided-run(\d+)$/,'Network-guided search, run $1'));
+const vcol=k=>VCOL[k]||(k.startsWith('net')?'#c070e0':k.startsWith('guided')?'#e0c040':'#888');
+const VCOL={current:'#ff4a4a',live:'#ff9a4a',keep2:'#ff9a4a',prune:'#ffb0b0',you:C.you,simple:C.b};
+const esc=t=>t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const when=ms=>new Date(ms).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+async function drawLearning(){
+ const d=await (await fetch('learning')).json();
+ const tr=d.training, runs=[...new Set(tr.map(r=>r.run))], last=tr[tr.length-1];
+ $('lsum').innerHTML=[['Puzzles recorded',d.recorded.puzzles.toLocaleString()],['Lessons (moves)',d.recorded.decisions.toLocaleString()],
+  ['Training runs',runs.length],['Latest: same move as bot',last?(last.moveMatch*100).toFixed(1)+'%':'—'],
+  ['Latest: time-left error',last?last.timeErr.toFixed(3)+' s vs '+last.handErr.toFixed(3)+' s':'—']].map(([k,v])=>'<div>'+k+'<b>'+v+'</b></div>').join('');
+ $('notes').innerHTML=d.notes.length?[...d.notes].reverse().map((n,i)=>'<div style="margin:10px 0;'+(i?'opacity:.75':'')+'"><b style="color:#fff">'+esc(n.title)+'</b> <span class=dim>'+when(n.at)+'</span>'+
+  n.text.split(/\n\s*\n/).map(p=>'<p style="color:#ddd;font-size:14px;margin:6px 0">'+esc(p)+'</p>').join('')+'</div>').join(''):'<p>No notes yet.</p>';
+ if(typeof Chart==='undefined')return;
+ chart('l1',{type:'line',data:{datasets:[{label:'Puzzles recorded',data:d.progress.map(p=>({x:p.at,y:p.puzzles})),borderColor:'#4caf50',pointRadius:0,borderWidth:2}]},
+  options:{parsing:false,scales:{x:{type:'linear',ticks:{callback:v=>new Date(v).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}},y:{beginAtZero:true}}}});
+ const pal=['#c070e0','#e0c040','#40c0e0','#ff9a4a','#4ade4a'];
+ chart('l2',{type:'line',data:{datasets:runs.map((r,i)=>({label:'Run '+(i+1)+' ('+tr.find(x=>x.run===r).puzzles+' puzzles)',
+  data:tr.filter(x=>x.run===r).map(x=>({x:x.epoch,y:+(x.moveMatch*100).toFixed(1)})),borderColor:pal[i%5],backgroundColor:pal[i%5]}))},
+  options:{parsing:false,scales:{x:{type:'linear',title:{display:true,text:'pass over the data'}},y:{title:{display:true,text:'% same move'}}}}});
+ const hand=last?last.handErr:null;
+ chart('l3',{type:'line',data:{datasets:[...runs.map((r,i)=>({label:'Network, run '+(i+1),data:tr.filter(x=>x.run===r).map(x=>({x:x.epoch,y:+x.timeErr.toFixed(3)})),borderColor:pal[i%5],backgroundColor:pal[i%5]})),
+  ...(hand?[{label:'Hand-written formula',data:[{x:1,y:hand},{x:Math.max(...tr.map(x=>x.epoch)),y:hand}],borderColor:'#888',borderDash:[6,4],pointRadius:0,borderWidth:1.5}]:[])]},
+  options:{parsing:false,scales:{x:{type:'linear',title:{display:true,text:'pass over the data'}},y:{title:{display:true,text:'seconds off'},beginAtZero:true}}}});
+ const E=d.evals, base=E.current&&Object.fromEntries(E.current.rows.map(r=>[r.seed,r]));
+ if(base){
+  const ok=r=>r&&r.result==='arrived';
+  const series=Object.keys(E).filter(k=>E[k].rows.length).map(k=>{const rs=E[k].rows,both=rs.filter(r=>ok(r)&&ok(base[r.seed]));
+   return {k,name:vname(k),finished:rs.filter(ok).length,total:rs.length,ratio:both.reduce((a,r)=>a+r.ticks/base[r.seed].ticks,0)/(both.length||1),think:E[k].summary&&E[k].summary.thinkPerGameSec};});
+  const ys=Object.keys(base).filter(s=>d.you[s]!=null&&ok(base[s]));
+  if(ys.length)series.push({k:'you',name:'You',finished:ys.length,total:Object.keys(base).length,ratio:ys.reduce((a,s)=>a+d.you[s]/base[s].ticks,0)/ys.length});
+  chart('l4',{type:'bar',data:{labels:series.map(x=>x.name+' ('+x.finished+'/'+x.total+')'),datasets:[
+   {label:'Time vs current planning bot',data:series.map(x=>+x.ratio.toFixed(3)),backgroundColor:series.map(x=>vcol(x.k))},
+   {label:'Same',type:'line',data:series.map(()=>1),borderColor:'#888',borderDash:[6,4],pointRadius:0,borderWidth:1}]},
+   options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+  const th=series.filter(x=>x.think!=null);
+  chart('l5',{type:'bar',data:{labels:th.map(x=>x.name),datasets:[
+   {label:'Thinking seconds per game second',data:th.map(x=>x.think||0.001),backgroundColor:th.map(x=>vcol(x.k))},
+   {label:'Live',type:'line',data:th.map(()=>1),borderColor:'#888',borderDash:[6,4],pointRadius:0,borderWidth:1}]},
+   options:{plugins:{legend:{display:false}},scales:{y:{type:'logarithmic',min:0.001}}}});
+  // speed to the target: route length / time, averaged over finished test puzzles
+  const T=d.test||{}, spd=(pairs)=>{const v=pairs.filter(([s,t])=>t&&T[s]).map(([s,t])=>T[s].pathTiles/(t/60));return v.length?{avg:v.reduce((a,b)=>a+b,0)/v.length,n:v.length}:null;};
+  const order=k=>k==='simple'?0:/^net-run/.test(k)?1+ +k.slice(7)/100:/^guided-run/.test(k)?2+ +k.slice(10)/100:k==='keep2'?3:k==='live'?3.5:k==='current'?4:5;
+  const bars=[['simple','Simple bot',spd(Object.entries(T).map(([s,x])=>[s,x.simple]))],
+   ...Object.keys(E).filter(k=>E[k].rows.length&&k!=='prune').map(k=>[k,vname(k),spd(E[k].rows.filter(ok).map(r=>[r.seed,r.ticks]))]),
+   ['you','You',spd(Object.keys(T).map(s=>[s,d.you[s]]))]].filter(b=>b[2]).sort((a,b)=>order(a[0])-order(b[0]));
+  chart('l6',{type:'bar',data:{labels:bars.map(b=>b[1]+' ('+b[2].n+')'),datasets:[{label:'Tiles per second to the target',data:bars.map(b=>+b[2].avg.toFixed(2)),backgroundColor:bars.map(b=>vcol(b[0]))}]},
+   options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw+' tiles per second over '+bars[c.dataIndex][2].n+' puzzles'}}},scales:{y:{beginAtZero:true,title:{display:true,text:'tiles per second'}}}}});
+ }
+}
+setInterval(()=>{if(tab==='learning')drawLearning();},60000);
+
+// ---------- main loop ----------
+let last=performance.now();
+function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
+ if(tab==='play'){stepPlay(dt);drawPlay();}else $('count').style.display='none';
+ if(tab==='watch'){stepWatch(dt);drawWatch();}
+ requestAnimationFrame(frame);}
+addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();});
+pickers();newPuzzle();requestAnimationFrame(frame);
+</script></body></html>

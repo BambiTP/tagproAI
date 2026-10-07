@@ -1,0 +1,301 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>TagPro Puzzles</title>
+<meta name="description" content="Race TagPro bots to the target: easy to expert puzzles, medals and a leaderboard.">
+<style>
+:root{--bg:#111;--panel:#1a1a1a;--line:#2c2c2c;--text:#ddd;--dim:#888;--you:#4ade4a;--gold:#f5c542;--silver:#c8ced6;--bronze:#d08a4a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;overflow-x:hidden}
+button,input,select{font:inherit}
+.btn{background:#2a2a2a;color:var(--text);border:1px solid #444;border-radius:6px;padding:6px 12px;cursor:pointer}
+.btn:hover{border-color:#777}.btn.on{background:#3a3a3a;border-color:#aaa;color:#fff;font-weight:600}
+.btn.primary{background:#2f6b2f;border-color:#4a9a4a;color:#fff}
+#top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:#1c1c1c}
+#top .grow{flex:1}
+.tabs{display:flex;gap:4px}
+.tab{display:none}.tab.on{display:block}
+.hud{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:8px 12px}
+.big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:#fff}
+.dim{color:var(--dim)}.you{color:var(--you)}
+canvas.map{display:block;margin:0 auto;max-width:100%}
+#card{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);background:#1d1d1df0;border:1px solid #444;border-radius:10px;
+ padding:18px 26px;font-size:17px;line-height:1.7;display:none;min-width:280px;max-width:calc(100vw - 32px);text-align:center;z-index:5}
+#card h2{margin:0 0 6px;font-size:24px}
+#count{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);font-size:90px;font-weight:800;color:#fff;text-shadow:0 0 12px #000;display:none;pointer-events:none}
+.medal{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;margin-right:3px}
+.gold{background:var(--gold)}.silver{background:var(--silver)}.bronze{background:var(--bronze)}
+#login{max-width:360px;margin:60px auto;padding:24px;background:var(--panel);border-radius:10px}
+#login input{width:100%;padding:8px;margin:6px 0;background:#222;color:#fff;border:1px solid #444;border-radius:6px}
+#login h1{margin:0 0 4px;font-size:24px;color:#fff}
+.err{color:#ff7a7a;min-height:20px}
+.wrap{padding:12px;max-width:1100px;margin:0 auto}
+table{border-collapse:collapse;width:100%}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
+.panel{background:var(--panel);border-radius:8px;padding:12px;margin-bottom:16px}
+.panel h3{margin:0 0 4px;color:#fff}.panel p{margin:0 0 8px;color:#999;font-size:13px}
+.flag{color:#ffb04a}.hud .grow{flex:1}#bstar.on{color:var(--gold);border-color:var(--gold)}
+.bar{height:4px;background:#333;border-radius:2px;margin-top:8px;overflow:hidden}.bar i{display:block;height:100%;background:var(--you);width:100%}.modes .btn small{color:var(--dim);font-weight:400}
+@media (max-width:600px){.hud{gap:8px}.big{font-size:18px}}
+</style>
+<script src="engine/box2d.js"></script><script src="engine/constants.js"></script><script src="engine/game.js"></script>
+</head><body>
+<div id="login" style="display:none">
+ <h1>TagPro Puzzles</h1>
+ <p class="dim">Race the bots to the target. Easy to expert puzzles, medals and a leaderboard. Log in or make an account to play.</p>
+ <input id="lu" placeholder="Username" autocomplete="username" maxlength="20">
+ <input id="lp" placeholder="Password (8+ characters)" type="password" autocomplete="current-password">
+ <div class="err" id="lerr"></div>
+ <button class="btn primary" id="blogin">Log in</button> <button class="btn" id="breg">Create account</button>
+ <p class="dim" id="lstatus" style="margin-top:14px"></p>
+</div>
+
+<div id="app" style="display:none">
+ <div id="top">
+  <b style="color:#fff">TagPro Puzzles</b>
+  <div class="tabs"><button class="btn on" data-t="play">Play</button><button class="btn" data-t="board">Leaderboard</button>
+   <button class="btn" data-t="help">How it works</button><button class="btn" data-t="admin" id="tadmin" style="display:none">Admin</button></div>
+  <span class="grow"></span>
+  <span id="meline"></span><button class="btn" id="blogout">Log out</button>
+ </div>
+
+ <div id="play" class="tab on">
+  <div class="hud modes" id="modes"></div>
+  <div class="hud">
+   <span>Puzzle <b id="pSeed" class="big">–</b></span><span class="big" id="pTime">0.00 s</span>
+   <span id="pTry" class="dim"></span>
+   <span id="pRec"></span>
+   <span class="grow"></span>
+   <button class="btn" id="bstar" title="Save this puzzle to your Starred list">☆ Star</button>
+   <button class="btn" id="bback">◀ Back (B)</button>
+   <button class="btn" id="bnext">Skip ▶ (N)</button>
+  </div>
+  <div class="hud" style="padding-top:0"><span class="dim">Arrows or WASD · touch the centre of the <span style="color:#3f3">green cross</span> at any speed · R retries · N next · B back</span>
+  </div>
+  <div class="hud" style="padding-top:0"><span class="dim">ghosts:</span> <span id="pPick"></span></div>
+  <div id="pmsg" class="wrap" style="display:none"></div>
+  <canvas id="pc" class="map"></canvas>
+ </div>
+
+ <div id="board" class="tab"><div class="wrap">
+  <div class="panel"><h3>Players</h3><p>Rating goes up for finishing near or under the planning bot's time and down for restarts, deaths and slow finishes. Players need 3 puzzles to appear.</p><div class="scroll"><table id="tplayers"></table></div></div>
+  <div class="panel"><h3>Hardest puzzles</h3><p>Puzzles get their own rating from how players do on them. Only players in good standing count.</p><div class="scroll"><table id="tpuzzles"></table></div></div>
+ </div></div>
+
+ <div id="help" class="tab"><div class="wrap"><div class="panel">
+  <h3>How it works</h3>
+  <p style="font-size:14px;color:#ddd;line-height:1.6">Each puzzle is a real TagPro map with a start, a starting velocity and a target. Touch the centre of the green cross as fast as you can, at any speed. The faded balls are bots that ran the same puzzle: the <b style="color:#ff4a4a">planning bot</b> tries thousands of key presses ahead in the real physics, the <b style="color:#4a9bff">simple bot</b> just steers at the target, and the <b style="color:#c070e0">network</b> bots learned to drive from the planning bot.</p>
+  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>It's about the best time.</b> Retry a puzzle as often as you like (R), then move on (N). Every puzzle has a record: the fastest time by anyone, bots included.</p>
+  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Modes</b> sort puzzles by how hard the best time is to reach. At first that comes from the bots: on Easy, just steering at the target is about as fast as careful planning; on Expert, careful planning beats plain steering by 40% or more (or a bot couldn't finish at all). Once 3 players have finished a puzzle, its mode comes from how close players get to the record instead. Each mode keeps its own progress.</p>
+  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Medals:</b> <span class="medal gold"></span>gold for beating the planning bot, <span class="medal silver"></span>silver for finishing within 10% of it, <span class="medal bronze"></span>bronze for finishing.</p>
+  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Rating</b> works like chess, with each puzzle as an opponent, and counts when you move on. Your best time matching the planning bot's is a draw, and half its time is a win. Each try after the first takes 2% off, so retrying pays only when it really improves your time. Moving on without finishing counts as a loss. Every run is checked on the server by replaying your keys in the same physics.</p>
+  <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Fair play:</b> accounts that restart in unusual ways (very fast, right at the start, or without pressing keys) are flagged automatically and left out of the puzzle difficulty numbers until an admin reviews them.</p>
+ </div></div></div>
+
+ <div id="admin" class="tab"><div class="wrap"><div class="panel"><h3>Players</h3>
+  <p>Restarts: total, within half a second, without a key. "Counted" means their runs shape puzzle ratings. Delete removes all their runs (the account stays).</p>
+  <div class="scroll"><table id="tadminp"></table></div></div></div></div>
+</div>
+<div id="card"></div><div id="count"></div>
+
+<script>
+const GIST='__GIST__', GIST_FILE='tagpro-puzzles.json';
+/*SHARED*/
+
+// ---------- server address and requests ----------
+let API=null, TOKEN=null;
+try{TOKEN=localStorage.getItem('tpToken');}catch(e){}
+async function findServer(){
+ const q=new URLSearchParams(location.search).get('api');if(q)return q.replace(/\/$/,'');
+ try{const g=await (await fetch('https://api.github.com/gists/'+GIST,{cache:'no-store'})).json();
+  return JSON.parse(g.files[GIST_FILE].content).url.replace(/\/$/,'');}catch(e){}
+ try{return (await (await fetch('backend.json?'+Date.now())).json()).url;}catch(e){}
+ return null;
+}
+async function api(path,body){
+ const r=await fetch(API+path,{method:body?'POST':'GET',headers:Object.assign({'content-type':'application/json'},TOKEN?{authorization:'Bearer '+TOKEN}:{}),body:body?JSON.stringify(body):undefined});
+ const d=await r.json().catch(()=>({error:'Bad reply from the server.'}));
+ if(r.status===401&&path!=='/api/login'){showLogin();throw new Error(d.error||'Please log in.');}
+ if(!r.ok)throw new Error(d.error||('Server error '+r.status));
+ return d;
+}
+const escH=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// ---------- login ----------
+function showLogin(){$('app').style.display='none';$('login').style.display='block';}
+async function doAuth(kind){
+ $('lerr').textContent='';
+ try{const d=await api('/api/'+kind,{username:$('lu').value.trim(),password:$('lp').value});
+  TOKEN=d.token;try{localStorage.setItem('tpToken',TOKEN);}catch(e){} enter(d.me);}catch(e){$('lerr').textContent=e.message;}
+}
+$('blogin').onclick=()=>doAuth('login');$('breg').onclick=()=>doAuth('register');
+$('lp').onkeydown=e=>{if(e.key==='Enter')doAuth('login');};
+$('blogout').onclick=async()=>{try{await api('/api/logout',{});}catch(e){} TOKEN=null;try{localStorage.removeItem('tpToken');}catch(e){} showLogin();};
+
+let ME=null;
+function meLine(m){ME=m;
+ $('meline').innerHTML='<b class=you>'+escH(m.name)+'</b> · rating <b>'+m.rating+'</b> · '+['gold','silver','bronze'].map(k=>'<span class="medal '+k+'"></span>'+m.medals[k]).join(' ')+
+  (m.flagged?' · <span class=flag>flagged for review</span>':'')+' ';
+ $('tadmin').style.display=m.admin?'':'none';}
+function enter(m){$('login').style.display='none';$('app').style.display='block';meLine(m);setTab('play');}
+
+// ---------- tabs ----------
+let tab='play';
+function setTab(t){tab=t;document.querySelectorAll('#top .tabs .btn').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+ document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.id===t));
+ if(t==='play')newPuzzle(); if(t==='board')drawBoard(); if(t==='admin')drawAdmin();}
+document.querySelectorAll('#top .tabs .btn').forEach(b=>b.onclick=()=>setTab(b.dataset.t));
+
+// ---------- play ----------
+const MODE_NAMES={easy:'Easy',medium:'Medium',hard:'Hard',expert:'Expert',starred:'★ Starred'};
+const pv=new View($('pc'));
+const held={};
+const KEYMAP={ArrowUp:'u',KeyW:'u',ArrowDown:'d',KeyS:'d',ArrowLeft:'l',KeyA:'l',ArrowRight:'r',KeyD:'r'};
+addEventListener('keydown',e=>{if(tab!=='play'||e.target.tagName==='INPUT')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
+ if(e.code==='KeyR'&&(P.state==='run'||P.state==='count'||P.state==='done')){cancelAuto();restartTry(P.state==='done');}
+ if((e.code==='KeyN'||e.code==='Enter')&&P.state!=='load')nextPuzzle();
+ if(e.code==='KeyB'&&P.state!=='load')backPuzzle();});
+$('bnext').onclick=()=>{if(P.state!=='load')nextPuzzle();};
+$('bback').onclick=()=>{if(P.state!=='load')backPuzzle();};
+$('bstar').onclick=async()=>{if(!P.d||!P.d.seed)return;
+ try{const r=await api('/api/star',{seed:P.d.seed,on:!P.d.starred});P.d.starred=r.starred;starBtn();}catch(e){msg(e.message);}};
+function starBtn(){$('bstar').classList.toggle('on',!!P.d.starred);$('bstar').textContent=P.d.starred?'★ Starred':'☆ Star';}
+// after a finish: move on by itself after a short pause, unless R is pressed
+let autoTimer=null;
+function cancelAuto(){if(autoTimer){clearTimeout(autoTimer);autoTimer=null;}}
+function autoNext(ms){cancelAuto();const bar=document.querySelector('#card .bar i');
+ if(bar){bar.style.transition='none';bar.style.width='100%';requestAnimationFrame(()=>{bar.style.transition='width '+ms+'ms linear';bar.style.width='0%';});}
+ autoTimer=setTimeout(()=>{autoTimer=null;if(tab==='play'&&P.state==='done')nextPuzzle();},ms);}
+addEventListener('keyup',e=>{const k=KEYMAP[e.code];if(k)held[k]=false;});
+addEventListener('blur',()=>{for(const k in held)held[k]=false;});
+function action(){const dx=(held.r?1:0)-(held.l?1:0),dy=(held.d?1:0)-(held.u?1:0);return ACTIONS.findIndex(([a,b])=>a===dx&&b===dy);}
+
+const P={state:'load'};
+function drawModes(d){
+ $('modes').innerHTML=ME.modes.map(m=>'<button class="btn'+(m===d.mode?' on':'')+'" data-m="'+m+'">'+MODE_NAMES[m]+' <small>'+(d.left?d.left[m]:'')+' left</small></button>').join('');
+ $('modes').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(b.dataset.m===P.d.mode)return;P.state='load';
+  try{showPuzzle(await api('/api/mode',{mode:b.dataset.m}));}catch(e){msg(e.message);}});
+}
+function msg(t){$('pmsg').style.display=t?'block':'none';$('pmsg').textContent=t||'';}
+async function newPuzzle(){
+ P.state='load';$('card').style.display='none';
+ try{showPuzzle(await api('/api/current'));}catch(e){msg(e.message);}
+}
+function showPuzzle(d){
+ P.d=d;drawModes(d);cancelAuto();
+ $('bback').disabled=!!d.first;$('bnext').disabled=!d.seed;$('bstar').disabled=!d.seed;
+ if(!d.seed){msg(d.message);$('pc').style.display='none';$('pSeed').textContent='–';return;}
+ msg('');starBtn();$('bnext').textContent=(d.session.best!=null||d.practice?'Next':'Skip')+' ▶ (N)';$('pc').style.display='';pv.setMap(d.map.tiles,d.tile,d.goal,d.start);
+ $('pSeed').textContent=d.seed;restartTry(true);
+}
+const sec=t=>t==null?'—':(t/60).toFixed(2)+' s';
+function tryLine(){const d=P.d,s=d.session;
+ $('pTry').textContent=(d.mode==='starred'?MODE_NAMES[d.puzzleMode]+' · ':'')+(d.practice?'practice (already scored) · ':'')+'tries '+s.tries+' · restarts '+s.restarts+' · deaths '+s.deaths+' · your best '+sec(d.yourBest);
+ $('bnext').textContent=(s.best!=null||d.practice?'Next':'Skip')+' ▶ (N)';
+ $('pRec').innerHTML='record <b>'+(d.record?sec(d.record.ticks)+'</b> by '+(d.record.bot?'the ':'')+escH(d.record.by):'—</b>')+' · planning bot '+sec(d.bots.search);}
+// every try is started on the server first; R reports the try so far, then starts a new one
+async function restartTry(fresh){
+ if(!fresh&&P.tryId&&P.state!=='done'){const keys=P.keys,id=P.tryId;P.tryId=null;
+  try{const r=await api('/api/finish',{tryId:id,keys,end:'restart'});P.d.session=r.session;}catch(e){}}
+ const d=P.d;P.sim=new BSim(JSON.parse(JSON.stringify(d.map)));P.p=P.sim.addBall(1);
+ P.sim.place(P.p,d.start.x,d.start.y,d.start.vx,d.start.vy);
+ P.keys=[];P.t=0;P.acc=0;P.state='count';P.countEnd=performance.now()+2000;P.tryId=null;P.tryNo=(P.tryNo||0)+1;
+ $('card').style.display='none';tryLine();
+ const no=P.tryNo;
+ try{const id=(await api('/api/start',{})).tryId;if(no===P.tryNo)P.tryId=id;}catch(e){if(no===P.tryNo){msg(e.message);P.state='load';}}
+}
+function stepPlay(dt){
+ if(P.state==='count'){const left=P.countEnd-performance.now();
+  $('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/667);
+  if(left<=0&&P.tryId){P.state='run';P.acc=0;}return;}
+ if(P.state!=='run')return;
+ P.acc+=dt*60;let n=0;
+ while(P.acc>=1&&n<5){P.acc--;n++;
+  const a=action();P.keys.push(a);setKeys(P.p,a);P.sim.tickOnce();P.t++;
+  const q=P.p.body.GetPosition();let res=null;
+  if(P.p.dead)res='pop';else if(Math.hypot(q.x-P.d.goal.x,q.y-P.d.goal.y)<P.d.touchR)res='arrived';else if(P.t>=P.d.maxTicks)res='timeout';
+  if(res){finishTry(res);break;}}
+ if(P.acc>5)P.acc=0;
+}
+const MEDAL_TEXT={gold:'Gold: you beat the planning bot!',silver:'Silver: within 10% of the planning bot',bronze:'Bronze'};
+async function finishTry(res){
+ P.state='done';const id=P.tryId,no=P.tryNo;P.tryId=null;let r;
+ try{r=await api('/api/finish',{tryId:id,keys:P.keys,end:res});}catch(e){msg(e.message);return;}
+ if(no!==P.tryNo||P.state!=='done')return; // R was pressed while this was on its way: don't cover the new try
+ P.d.session=r.session;P.d.record=r.record;if(r.best){P.d.yourBest=r.ticks;}tryLine();
+ const c=$('card'),b=P.d.bots;
+ const head=r.newRecord?'New record!':r.end==='arrived'?(r.medal?'<span class="medal '+r.medal+'" style="width:20px;height:20px"></span> '+MEDAL_TEXT[r.medal]:'Made it'):r.end==='pop'?'Popped on a spike':r.end==='timeout'?'Out of time':'Restarted';
+ c.innerHTML='<h2>'+head+'</h2>'+
+  '<div class=you>This try: '+(r.end==='arrived'?sec(r.ticks):'—')+(r.best?' (personal best)':'')+'</div>'+
+  '<div>Your best: '+sec(P.d.yourBest)+' · record: '+(r.record?sec(r.record.ticks)+' by '+escH(r.record.by):'—')+'</div>'+
+  '<div style="color:#ff6b6b">Planning bot: '+sec(b.search)+'</div>'+
+  (res!==r.end&&r.end!=='restart'?'<div class=dim>(the server\'s replay disagreed with your browser; the server counts)</div>':'')+
+  (r.end==='arrived'?'<div class=dim style="margin-top:6px">Next puzzle in a moment · <b>R</b> try again · <b>N</b> go now</div><div class="bar"><i></i></div>'
+   :'<div class=dim style="margin-top:6px">Trying again… <b>N</b> skip</div>');
+ c.style.display='block';
+ if(r.end==='arrived')autoNext(2500);
+ else{cancelAuto();autoTimer=setTimeout(()=>{autoTimer=null;if(tab==='play'&&P.state==='done')restartTry(true);},1200);}
+ if(r.best)try{meLine(await api('/api/me'));}catch(e){}
+}
+// move on: the puzzle's result counts towards the rating now
+async function nextPuzzle(){
+ cancelAuto();
+ if(P.tryId&&P.state!=='done'){const keys=P.keys,id=P.tryId;P.tryId=null;try{await api('/api/finish',{tryId:id,keys,end:'restart'});}catch(e){}}
+ P.state='load';$('card').style.display='none';
+ try{const r=await api('/api/next',{});
+  if(!r.practice){const c=$('card');c.innerHTML='<h2>Rating '+(r.change>=0?'+':'')+r.change.toFixed(1)+'</h2><div>Now <b>'+Math.round(r.rating)+'</b></div>';c.style.display='block';
+   setTimeout(()=>{if(P.state==='load'||P.state==='count')$('card').style.display='none';},1500);}
+  meLine(await api('/api/me'));showPuzzle(r.puzzle);}catch(e){msg(e.message);}
+}
+function drawPlay(){
+ if(!P.d||!P.d.seed||P.state==='load'||!P.p)return;
+ pv.base();const gh=P.d.ghosts,t=P.state==='count'?0:P.t;
+ for(const b of BOTS)if(shown(b.k)&&gh[b.k])pv.ghost(gh[b.k],t,b.col,b.k==='you'?.3:.35,b.k==='you'?'your best':b.name);
+ const q=P.p.body.GetPosition();pv.ball(q.x,q.y,C.you,P.p.dead?.3:1,P.state==='run'?action():0);
+ $('pTime').textContent=(t/60).toFixed(2)+' s';
+}
+
+async function backPuzzle(){
+ cancelAuto();
+ if(P.tryId&&P.state!=='done'){const keys=P.keys,id=P.tryId;P.tryId=null;try{await api('/api/finish',{tryId:id,keys,end:'restart'});}catch(e){}}
+ P.state='load';$('card').style.display='none';
+ try{showPuzzle(await api('/api/back',{}));}catch(e){msg(e.message);P.state='done';}
+}
+
+// ---------- leaderboard ----------
+async function drawBoard(){
+ const d=await api('/api/leaderboard');
+ $('tplayers').innerHTML='<tr><th>#</th><th>Player</th><th>Rating</th><th>Medals</th><th>Records</th><th>Puzzles finished</th></tr>'+
+  (d.players.length?d.players.map((p,i)=>'<tr><td>'+(i+1)+'</td><td'+(ME&&p.name===ME.name?' class=you':'')+'>'+escH(p.name)+(p.flagged?' <span class=flag title="flagged for review">⚑</span>':'')+'</td><td><b>'+p.rating+'</b></td><td>'+
+   ['gold','silver','bronze'].map(k=>'<span class="medal '+k+'"></span>'+p[k]).join(' ')+'</td><td>'+p.records+'</td><td>'+p.finished+' of '+p.sessions+'</td></tr>').join(''):'<tr><td colspan=6 class=dim>Nobody yet. Play 3 puzzles to be first.</td></tr>');
+ $('tpuzzles').innerHTML='<tr><th>Puzzle</th><th>Mode</th><th>Rating</th><th>Players</th><th>Tries each</th><th>Restarts each</th><th>Within 5% of record</th><th>Record</th><th>Planning bot</th></tr>'+
+  (d.puzzles.length?d.puzzles.slice(0,50).map(p=>'<tr><td>'+p.seed+'</td><td>'+MODE_NAMES[p.mode]+'</td><td><b>'+p.rating+'</b></td><td>'+p.players+'</td><td>'+p.triesPer.toFixed(1)+'</td><td>'+p.restartsPer.toFixed(1)+'</td><td>'+(p.nearRecord==null?'—':Math.round(p.nearRecord*100)+'%')+'</td><td>'+(p.record?p.record.secs.toFixed(2)+' s <span class=dim>'+escH(p.record.by)+'</span>':'—')+'</td><td>'+p.botSecs.toFixed(2)+' s</td></tr>').join(''):'<tr><td colspan=9 class=dim>No results yet.</td></tr>');
+}
+
+// ---------- admin ----------
+async function drawAdmin(){
+ const ps=await api('/api/admin/players');
+ const act=(k,a,label)=>'<button class="btn" style="padding:2px 8px" data-k="'+escH(k)+'" data-a="'+a+'">'+label+'</button>';
+ $('tadminp').innerHTML='<tr><th>Player</th><th>Status</th><th>Rating</th><th>Puzzles</th><th>Tries</th><th>Restarts</th><th>Deaths</th><th>Flags</th><th>Last seen</th><th>Actions</th></tr>'+
+  ps.map(p=>'<tr><td>'+escH(p.name)+(p.admin?' <span class=dim>(admin)</span>':'')+'</td><td>'+[p.banned?'banned':'',p.excluded?'excluded':'',p.trusted?'trusted':'',p.counted?'counted':'not counted'].filter(Boolean).join(', ')+'</td><td>'+p.rating+'</td><td>'+p.finished+'/'+p.sessions+'</td><td>'+p.tries+'</td><td>'+p.restarts+' / '+p.instant+' / '+p.idle+'</td><td>'+p.deaths+'</td><td class=flag style="white-space:normal;min-width:180px">'+p.flags.map(f=>escH(f.reason)).join('<br>')+'</td><td>'+(p.last?new Date(p.last).toLocaleString():'—')+'</td><td>'+
+   (p.excluded?act(p.key,'include','Include'):act(p.key,'exclude','Exclude'))+' '+(p.banned?act(p.key,'unban','Unban'):act(p.key,'ban','Ban'))+' '+
+   (p.flags.length?act(p.key,'clearflags','Clear flags'):p.trusted?act(p.key,'untrust','Untrust'):'')+' '+act(p.key,'delete','Delete data')+'</td></tr>').join('');
+ $('tadminp').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
+  if(b.dataset.a==='delete'&&!confirm('Delete all of '+b.dataset.k+"'s runs? This can't be undone."))return;
+  try{await api('/api/admin/action',{key:b.dataset.k,action:b.dataset.a});drawAdmin();}catch(e){alert(e.message);}});
+}
+
+// ---------- start ----------
+let last=performance.now();
+function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
+ if(tab==='play'){stepPlay(dt);drawPlay();}else $('count').style.display='none';
+ requestAnimationFrame(frame);}
+addEventListener('resize',()=>{if(P.d&&P.d.seed)pv.layout();});
+(async()=>{
+ showLogin();$('lstatus').textContent='Finding the puzzle server…';
+ API=await findServer();
+ if(!API){$('lstatus').textContent='The puzzle server is offline right now. Try again later.';return;}
+ try{await (await fetch(API+'/api/health')).json();$('lstatus').textContent='';}
+ catch(e){$('lstatus').textContent='The puzzle server is offline or restarting. Try again in a minute.';return;}
+ pickers();requestAnimationFrame(frame);
+ if(TOKEN)try{enter(await api('/api/me'));}catch(e){}
+})();
+</script></body></html>

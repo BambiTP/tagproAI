@@ -7,6 +7,7 @@ const ARRIVE_R = 0.12;   // m (12 px) from the goal
 const ARRIVE_V = 0.25;   // m/s
 const K = 4;             // ticks per decision (15 Hz)
 const MAX_TICKS = 900;   // 15 s
+const BALL_R = PH.BALL_RADIUS; // "touch" tasks: done once the ball covers the goal point
 
 // ---------- map geometry (red ball) ----------
 function blocked(t) {
@@ -134,6 +135,36 @@ function arrived(goal, x, y, vx, vy) {
   return Math.hypot(x - goal.x, y - goal.y) < ARRIVE_R && Math.hypot(vx, vy) < ARRIVE_V;
 }
 
+// ---------- "touch" tasks: reach the goal at any speed ----------
+function touched(goal, x, y) { return Math.hypot(x - goal.x, y - goal.y) < BALL_R; }
+// 1-D ticks to cover distance d pushing all the way, from velocity v along it
+const memoR = new Map();
+function tReach(d, v) {
+  if (d <= 0) return 0;
+  const qd = Math.round(d / 0.02), qv = Math.round(v / 0.02), key = qd * 1000 + qv;
+  let r = memoR.get(key);
+  if (r !== undefined) return r;
+  let x = 0, vv = qv * 0.02, ticks = 0;
+  const D = qd * 0.02;
+  while (x < D && ticks < 2000) { vv *= DAMP; x += vv * DT; if (vv < MS) vv += ACC; ticks++; }
+  memoR.set(key, ticks);
+  return ticks;
+}
+function heuristicTouch(F, goal, x, y, vx, vy) {
+  let d, ux, uy;
+  if (clearLine(F, x, y, goal.x, goal.y)) {
+    d = Math.hypot(goal.x - x, goal.y - y); ux = (goal.x - x) / (d || 1); uy = (goal.y - y) / (d || 1);
+  } else {
+    d = fieldAt(F, x, y);
+    if (d === Infinity) return 1e5;
+    [ux, uy] = pathDir(F, x, y);
+  }
+  const vp = vx * ux + vy * uy, vq = -vx * uy + vy * ux;
+  // sideways speed has to be taken off on the way (half the time to stop it, as it overlaps)
+  return Math.max(tReach(d - BALL_R, vp), t1(0, vq) * 0.5);
+}
+const goalCheck = (task) => (task.touch ? (g, x, y) => touched(g, x, y) : arrived);
+
 // ---------- tasks ----------
 function rng(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32); }
 
@@ -158,10 +189,17 @@ function makeTask(seed, keys) {
 // baseline: per-axis bang-bang towards a waypoint (the goal if in sight, else a path tile in sight)
 function baseline(task, x, y, vx, vy) {
   const F = task.F, goal = task.goal;
-  let wx = goal.x, wy = goal.y, stop = true;
+  let wx = goal.x, wy = goal.y, stop = !task.touch;
   if (!clearLine(F, x, y, goal.x, goal.y)) {
     const [ux, uy] = pathDir(F, x, y);
     wx = x + ux * 1.2; wy = y + uy * 1.2; stop = false;
+  }
+  if (task.touch) {
+    // no stopping: steer the velocity towards full speed straight at the waypoint, which also
+    // takes off sideways drift
+    const L = Math.hypot(wx - x, wy - y) || 1, ex = (wx - x) / L * MS - vx, ey = (wy - y) / L * MS - vy;
+    const ax = Math.abs(ex) < 0.1 ? 0 : Math.sign(ex), ay = Math.abs(ey) < 0.1 ? 0 : Math.sign(ey);
+    return ACTIONS.findIndex(([a, b]) => a === ax && b === ay);
   }
   const axis = (d, v) => {
     if (!stop) return Math.abs(d) < 0.05 ? 0 : Math.sign(d);
@@ -179,6 +217,7 @@ function baseline(task, x, y, vx, vy) {
 // key directions for K ticks; nodes are ranked by ticks used + estimated ticks to go.
 function makeSearch({ width = 16, depth = 6 } = {}) {
   return function search(task, sim, p) {
+    const done_ = goalCheck(task), est = task.touch ? heuristicTouch : heuristic;
     const root = sim.save();
     let beam = [{ s: root, g: 0, first: -1 }], bestDone = null, bestLeaf = null;
     for (let lvl = 0; lvl < depth && beam.length; lvl++) {
@@ -192,13 +231,13 @@ function makeSearch({ width = 16, depth = 6 } = {}) {
             sim.tickOnce();
             if (p.dead) break;
             const q = p.body.GetPosition(), v = p.body.GetLinearVelocity();
-            if (arrived(task.goal, q.x, q.y, v.x, v.y)) { done = true; t++; break; }
+            if (done_(task.goal, q.x, q.y, v.x, v.y)) { done = true; t++; break; }
           }
           if (p.dead) continue;
           const g = n.g + t, first = n.first < 0 ? a : n.first;
           if (done) { if (!bestDone || g < bestDone.g) bestDone = { g, first }; continue; }
           const q = p.body.GetPosition(), v = p.body.GetLinearVelocity();
-          const f = g + heuristic(task.F, task.goal, q.x, q.y, v.x, v.y);
+          const f = g + est(task.F, task.goal, q.x, q.y, v.x, v.y);
           if (bestDone && f >= bestDone.g) continue;
           const cell = Math.round(q.x / 0.04) + ',' + Math.round(q.y / 0.04) + ',' + Math.round(v.x / 0.1) + ',' + Math.round(v.y / 0.1);
           const st = sim.save();
@@ -229,4 +268,4 @@ function makeSearch({ width = 16, depth = 6 } = {}) {
   };
 }
 
-module.exports = { field, heuristic, t1, arrived, makeTask, baseline, makeSearch, clearLine, K, MAX_TICKS, TILE, mapKeys, Sim, setKeys, ACTIONS };
+module.exports = { field, fieldAt, pathDir, heuristic, heuristicTouch, t1, tReach, arrived, touched, goalCheck, BALL_R, makeTask, baseline, makeSearch, clearLine, K, MAX_TICKS, TILE, mapKeys, Sim, setKeys, ACTIONS };

@@ -3,3 +3,6 @@ node_modules/
 base*.json
 search*.json
 s[AB4].json
+runs/
+net.json
+recordings/
