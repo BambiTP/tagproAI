@@ -298,6 +298,15 @@ http.createServer((req, res) => {
         prev: [...ready].filter((x) => x < s && playable(x)).sort((a, b) => b - a)[0] || null,
         after: s === human.next ? null : [...ready].filter((x) => x > s && x < human.next && playable(x)).sort((a, b) => a - b)[0] || human.next });
     }
+    if (u.pathname === '/restart' && req.method === 'POST') {
+      // an R press on the private page: logged so the try count is honest (it can't change anything else)
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 1e3) req.destroy(); });
+      req.on('end', () => { try { const r = JSON.parse(body);
+        if (Number.isInteger(r.seed) && Number.isInteger(r.ticks)) { human.attempts.push({ seed: r.seed, result: 'restart', ticks: r.ticks, at: Date.now() }); saveHuman(); }
+        send(res, 200, { ok: true }); } catch (e) { send(res, 400, { error: 'bad' }); } });
+      return;
+    }
     if (u.pathname === '/skip' && req.method === 'POST') {
       human.next++; human.fails = 0; skipUnplayable(); saveHuman(); wake();
       return send(res, 200, { next: human.next });
@@ -336,6 +345,7 @@ http.createServer((req, res) => {
   // the public puzzle server for the GitHub Pages site, on its own port (see arena.js and tunnel.js)
   const botCache = new Map();
   require('./arena')({ N, record, task, getMap, ready, playable, FIRST, extraOf,
+    ownerBest: (s) => (human.best[s] ? human.best[s].ticks : null),
     botRuns: (s) => {
       if (!ready.has(s)) return null;
       if (!botCache.has(s)) botCache.set(s, JSON.parse(fs.readFileSync(botFile(s), 'utf8')));

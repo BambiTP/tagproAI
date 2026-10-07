@@ -37,6 +37,14 @@ function botMode(b) {
   return gap < 1.03 ? 'easy' : gap < 1.15 ? 'medium' : gap < 1.4 ? 'hard' : 'expert';
 }
 // ... and from players once 3 have finished it: how far their best times typically are from the record
+// ... and when a person beats every bot by a clear margin the best time takes a trick the bots miss
+// (puzzle 300: all five bots 2.98 s, a boost route 2.72 s), so it's at least hard, or expert
+function trickMode(botBest, humanBest) {
+  if (!botBest || !humanBest) return 'easy';
+  const gap = botBest / humanBest;
+  return gap >= 1.08 ? 'expert' : gap >= 1.04 ? 'hard' : 'easy';
+}
+const harder = (a, b) => (MODES.indexOf(a) >= MODES.indexOf(b) ? a : b);
 function playerMode(ratios) {
   const s = [...ratios].sort((a, b) => a - b), m = s[s.length >> 1];
   return m < 1.05 ? 'easy' : m < 1.15 ? 'medium' : m < 1.3 ? 'hard' : 'expert';
@@ -103,8 +111,13 @@ module.exports = function startArena(ctx) {
   }
   function puzzleMode(seed) {
     const rec = recordOf(seed), ratios = [];
-    for (const u of Object.values(users)) if (counts(u) && u.best[seed] != null && rec) ratios.push(u.best[seed] / rec.ticks);
-    return ratios.length >= 3 ? playerMode(ratios) : botMode(ctx.botRuns(seed));
+    let human = ctx.ownerBest ? ctx.ownerBest(seed) : null;   // the site owner's private-page best counts too
+    for (const u of Object.values(users)) if (counts(u) && u.best[seed] != null) {
+      if (rec) ratios.push(u.best[seed] / rec.ticks);
+      if (human == null || u.best[seed] < human) human = u.best[seed];
+    }
+    const bt = Object.values(botTimes(seed)), trick = trickMode(bt.length ? Math.min(...bt) : null, human);
+    return harder(ratios.length >= 3 ? playerMode(ratios) : botMode(ctx.botRuns(seed)), trick);
   }
   const inList = (s, mode, u) => (mode === 'starred' ? !!(u.stars && u.stars[s]) : puzzleMode(s) === mode);
   function nextReady(from, mode, u) {

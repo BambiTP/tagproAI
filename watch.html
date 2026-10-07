@@ -225,6 +225,8 @@ async function newPuzzle(seed){
  restart();
 }
 function restart(){
+ // an R press part-way through a try: tell the server so restarts are counted
+ if(P.d&&(P.state==='run'||P.state==='count')&&P.t>0)fetch('restart',{method:'POST',body:JSON.stringify({seed:P.d.seed,ticks:P.t})}).catch(()=>{});
  const d=P.d;P.sim=new BSim(JSON.parse(JSON.stringify(d.map)));P.p=P.sim.addBall(1);
  P.sim.place(P.p,d.start.x,d.start.y,d.start.vx,d.start.vy);
  P.keys=[];P.t=0;P.acc=0;P.state='count';P.countEnd=performance.now()+2000;P.tryNo=(P.tryNo||0)+1;
