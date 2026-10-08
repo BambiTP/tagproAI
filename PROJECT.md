@@ -128,7 +128,12 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   `extra` in fastsearch.js). Chasers: pursue, lead, intercept (first point on the carrier's route home it reaches
   first, else the flag), mixed. Carriers: run, escape (keeps away), wide. On 209 puzzles: intercept/mixed return
   about half the carriers, pursue 28%; escape carriers cap a bit more than run (55% vs 49%).
-- Results in `chase/results/` (`summary.txt`, `duel-summary.txt`).
+- `chase/team.js` two against two (chaser + nearest teammate vs carrier + nearest teammate, real collisions; width
+  10, depth 6 search). On 104 puzzles: a second chaser lifts returns from 38% (one interceptor) to 63-67%; teammate
+  intercepting vs guarding the flag barely differs; the first blocker (stays between carrier and nearest chaser)
+  did not help the carrier.
+- Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
+- Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
 ---
 
