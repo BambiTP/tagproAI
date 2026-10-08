@@ -9,3 +9,5 @@ recordings/
 labels/clips/
 labels/replays.txt
 labels/*.log
+chase/scenarios/
+chase/results/
