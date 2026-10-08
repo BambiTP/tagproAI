@@ -489,7 +489,7 @@ async function nextClip(){
 }
 $('lreplay').onclick=()=>{LB.t=0;LB.acc=0;LB.pause=0;LB.phase=0;if($('lrealbox').checked)$('lframe').src=$('lopen').href;};
 // the clip in the official game client (served by the puzzle server); remembered between visits
-try{$('lrealbox').checked=localStorage.getItem('tpReal')==='1';}catch(e){}
+$('lrealbox').checked=true;try{if(localStorage.getItem('tpReal')==='0')$('lrealbox').checked=false;}catch(e){}
 function showReal(url){const on=$('lrealbox').checked;$('lframe').style.display=on?'block':'none';$('lc').style.display=on?'none':'';
  if(on&&url&&$('lframe').src!==url)$('lframe').src=url;if(!on)$('lframe').src='about:blank';}
 $('lrealbox').onchange=()=>{try{localStorage.setItem('tpReal',$('lrealbox').checked?'1':'0');}catch(e){}showReal($('lopen').href);};
