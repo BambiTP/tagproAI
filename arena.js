@@ -467,12 +467,19 @@ module.exports = function startArena(ctx) {
 (function(){var FROM=${r.from},MARK=${r.mark},TO=${r.to},TARGET=${r.clip.target},NAME=${JSON.stringify(String(who.name || '')).replace(/</g, '\\u003c')};
 var bar=document.createElement('div');bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#000c;color:#fff;font:600 15px system-ui;padding:6px 10px';
 bar.textContent='Watch '+NAME+' (the camera follows them). Loading…';document.addEventListener('DOMContentLoaded',function(){document.body.appendChild(bar);});
-var paused=false,iv=setInterval(function(){var rp=window.replayIO&&replayIO.tagpro&&replayIO.tagpro.replayPlayer;if(!rp||!window.tagpro||!tagpro.map)return;clearInterval(iv);
- try{rp.seek(FROM);}catch(e){}
- // point the camera at the ringed player once, then leave the client's own smooth camera alone
- setTimeout(function(){try{tagpro.playerId=TARGET;tagpro.viewport.followPlayer=true;rp.play();}catch(e){}bar.textContent='Watch '+NAME+' (the camera follows them). It pauses at the marked moment.';},400);
+// as soon as the replay player exists: pause, jump to the clip, and only play once the jump has finished and
+// the textures are loaded; then point the camera at the ringed player once and leave the client's camera alone
+var paused=false,started=false,iv=setInterval(function(){var rp=window.replayIO&&replayIO.tagpro&&replayIO.tagpro.replayPlayer;if(!rp||!window.tagpro)return;clearInterval(iv);
+ try{rp.pause();}catch(e){}
+ var jumped=false,go=function(){if(started||!jumped||!tagpro.map)return;var ok=function(){if(started)return;started=true;
+   try{tagpro.playerId=TARGET;tagpro.viewport.followPlayer=true;rp.play();}catch(e){}bar.textContent='Watch '+NAME+' (the camera follows them). It pauses at the marked moment.';};
+  try{if(tagpro.tilesLoaded&&tagpro.tilesLoaded.state&&tagpro.tilesLoaded.state()!=='resolved'){tagpro.tilesLoaded.then(function(){setTimeout(ok,300);});return;}}catch(e){}
+  setTimeout(ok,300);};
+ try{rp.once('replaySeekFinished',function(){jumped=true;try{rp.pause();}catch(e){}go();});}catch(e){}
+ try{rp.seek(FROM);}catch(e){jumped=true;}
+ var wait=setInterval(function(){if(started)return clearInterval(wait);try{rp.pause();}catch(e){}go();},250); // stay paused until ready
  setInterval(function(){try{var t=rp.player&&rp.player.currentTime;
-  if(t!=null&&!paused&&t>=MARK){paused=true;rp.pause();bar.textContent='⏸ The marked moment: what is '+NAME+' doing? (press play to see what happens next)';if(parent)parent.postMessage({labelReplay:'marked'},'*');}
+  if(started&&t!=null&&!paused&&t>=MARK){paused=true;rp.pause();bar.textContent='⏸ The marked moment: what is '+NAME+' doing? (press play to see what happens next)';if(parent)parent.postMessage({labelReplay:'marked'},'*');}
   if(t!=null&&t>TO+2000){paused=false;rp.seek(FROM);rp.play();}}catch(e){}},50);
 },200);})();
 </script>`;
