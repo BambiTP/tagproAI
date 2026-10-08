@@ -10,7 +10,8 @@
 //  - boosts: estimate with the route field that treats live boosts as shortcuts (nav.boostField); true or
 //    { setup, keep } settings
 // A task can also carry hooks for games with other balls (chase/duel.js): doneAt(x, y) replaces the goal test,
-// lost() ends a line like a pop (e.g. the carrier got touched), extra(x, y) adds ticks to a line's estimate.
+// lost() ends a line like a pop (e.g. the carrier got touched), extra(x, y) adds ticks to a line's estimate,
+// react(p) is called before every lookahead tick to set the other balls' keys (otherwise they keep their keys).
 const { isMainThread, parentPort, Worker, workerData } = require('worker_threads');
 const N = require('./nav');
 const { Sim, getMap, setKeys } = require('./sim');
@@ -66,6 +67,7 @@ function makeSearch2({ width = 16, depth = 8, calmWidth = 8, calmDepth = 4, adap
           setKeys(p, a);
           let done = false, lost = false, t = 0;
           for (; t < N.K; t++) {
+            if (task.react) task.react(p);
             sim.tickOnce();
             if (p.dead || (task.lost && task.lost())) { lost = true; break; }
             const q = p.body.GetPosition(), v = p.body.GetLinearVelocity();
@@ -79,6 +81,7 @@ function makeSearch2({ width = 16, depth = 8, calmWidth = 8, calmDepth = 4, adap
           if (bestDone && f >= bestDone.g) continue;
           const cell = Math.round(q.x / 0.04) + ',' + Math.round(q.y / 0.04) + ',' + Math.round(v.x / 0.1) + ',' + Math.round(v.y / 0.1);
           const st = sim.save();
+          if (task.react) task.react(p);
           sim.tickOnce(); // a state already overlapping a spike pops next tick whatever the keys
           if (p.dead) continue;
           kids.push({ f, g, line, cell, s: st });

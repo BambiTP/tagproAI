@@ -30,6 +30,9 @@ const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT =
 const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
+// REACT=1: inside each ball's lookahead the other three steer by simple rules (chasers straight at the carrier, the
+// carrier along its route home, its teammate at its marking spot) instead of keeping their keys
+const REACT = !!+(process.env.REACT || 0);
 const SEARCH = { prune: true, adaptive: false, width: +(process.env.TEAM_W || 10), depth: +(process.env.TEAM_D || 6) };
 
 function nearest(list, x, y) { let b = null, bd = Infinity; for (const o of list) { const d = Math.hypot(o.x - x, o.y - y); if (d < bd) { bd = d; b = o; } } return b; }
@@ -110,6 +113,25 @@ function game(s, planA, planB) {
     if (!Fc.ok[tileOf(gx) * Fc.H + tileOf(gy)]) { gx = r.x; gy = r.y; }
     return ballTask(gx, gy, { doneAt: () => false });
   };
+  // simple steering: full speed towards (tx, ty), or along the route field F when the line is blocked
+  const steer = (p, tx, ty, F) => {
+    const q = pos(p), w = vel(p); let ux = tx - q.x, uy = ty - q.y;
+    if (F && !N.clearLine(F, q.x, q.y, tx, ty)) [ux, uy] = N.pathDir(F, q.x, q.y);
+    const L = Math.hypot(ux, uy) || 1, ex = ux / L * 2.5 - w.x, ey = uy / L * 2.5 - w.y;
+    N.setKeys(p, N.ACTIONS.findIndex(([a, b]) => a === (Math.abs(ex) < 0.1 ? 0 : Math.sign(ex)) && b === (Math.abs(ey) < 0.1 ? 0 : Math.sign(ey))));
+  };
+  const markSpot = () => {
+    const r = pos(ca), live = chasers.filter(alive); if (!live.length) return [goalC.x, goalC.y];
+    const c = live.reduce((a, b) => (Math.hypot(pos(a).x - r.x, pos(a).y - r.y) <= Math.hypot(pos(b).x - r.x, pos(b).y - r.y) ? a : b)), cp = pos(c);
+    const dx = r.x - cp.x, dy = r.y - cp.y, L = Math.hypot(dx, dy) || 1, k = Math.min(0.5, L / 2); return [cp.x + dx / L * k, cp.y + dy / L * k];
+  };
+  const react = (me) => {
+    const r = pos(ca);
+    for (const c of chasers) if (c !== me && alive(c)) steer(c, r.x, r.y, null);
+    if (ca !== me && alive(ca)) steer(ca, goalC.x, goalC.y, Fc);
+    if (es !== me && alive(es)) { if (planB === 'alone') steer(es, goalC.x, goalC.y, Fc); else { const [x, y] = markSpot(); steer(es, x, y, null); } }
+  };
+  const withReact = (task) => (REACT ? { ...task, react } : task);
   const plans = new Map(), keys = new Map();
   const roles = [[ch, () => intercept(ch)], [m2, () => (planA === 'guard' ? guard() : intercept(m2))], [ca, () => carrierTask], [es, escortTask]];
   let ms = 0;
@@ -122,7 +144,7 @@ function game(s, planA, planB) {
       for (const [p, task] of roles) {
         if (p.dead) { keys.set(p, 0); continue; }
         let pl = plans.get(p) || [];
-        if (!pl.length) pl = search(task(), sim, p).line.slice(0, 2);
+        if (!pl.length) pl = search(withReact(task()), sim, p).line.slice(0, 2);
         keys.set(p, pl.shift()); plans.set(p, pl);
       }
       ms += performance.now() - t0;
