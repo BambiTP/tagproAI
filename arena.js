@@ -467,21 +467,27 @@ module.exports = function startArena(ctx) {
 (function(){var FROM=${r.from},MARK=${r.mark},TO=${r.to},TARGET=${r.clip.target},NAME=${JSON.stringify(String(who.name || '')).replace(/</g, '\\u003c')};
 var bar=document.createElement('div');bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#000c;color:#fff;font:600 15px system-ui;padding:6px 10px';
 bar.textContent='Watch '+NAME+' (the camera follows them). Loading…';document.addEventListener('DOMContentLoaded',function(){document.body.appendChild(bar);});
-// as soon as the replay player exists: pause, jump to the clip, and only play once the jump has finished and
-// the textures are loaded; then point the camera at the ringed player once and leave the client's camera alone
-var paused=false,started=false,iv=setInterval(function(){var rp=window.replayIO&&replayIO.tagpro&&replayIO.tagpro.replayPlayer;if(!rp||!window.tagpro)return;clearInterval(iv);
- try{rp.pause();}catch(e){}
- var jumped=false,go=function(){if(started||!jumped||!tagpro.map)return;var ok=function(){if(started)return;started=true;
-   try{tagpro.playerId=TARGET;tagpro.viewport.followPlayer=true;rp.play();}catch(e){}bar.textContent='Watch '+NAME+' (the camera follows them). It pauses at the marked moment.';};
-  try{if(tagpro.tilesLoaded&&tagpro.tilesLoaded.state&&tagpro.tilesLoaded.state()!=='resolved'){tagpro.tilesLoaded.then(function(){setTimeout(ok,300);});return;}}catch(e){}
-  setTimeout(ok,300);};
- try{rp.once('replaySeekFinished',function(){jumped=true;try{rp.pause();}catch(e){}go();});}catch(e){}
- try{rp.seek(FROM);}catch(e){jumped=true;}
- var wait=setInterval(function(){if(started)return clearInterval(wait);try{rp.pause();}catch(e){}go();},250); // stay paused until ready
- setInterval(function(){try{var t=rp.player&&rp.player.currentTime;
-  if(started&&t!=null&&!paused&&t>=MARK){paused=true;rp.pause();bar.textContent='⏸ The marked moment: what is '+NAME+' doing? (press play to see what happens next)';if(parent)parent.postMessage({labelReplay:'marked'},'*');}
-  if(t!=null&&t>TO+2000){paused=false;rp.seek(FROM);rp.play();}}catch(e){}},50);
-},200);})();
+// the client starts at ?t= (the redirect in the server adds it) and does its own jump; this only follows the
+// ringed player, pauses with the client's own play/pause button at the marked moment (so its controls stay
+// right), and loops the clip with the client's seek bar. If the start was ignored, it seeks with the bar too.
+var paused=false,started=false,lastSeek=0,rp=null,
+ seekTo=function(t){lastSeek=Date.now();var b=$('#replaySeekBar');b.val(t);b.trigger('mousedown');b.trigger('mouseup');},
+ isPaused=function(){return !!tagpro.replayPaused;},
+ setPaused=function(p){if(isPaused()!==p)$('#replayPlayPause').trigger('click');};
+setInterval(function(){try{
+ rp=rp||(window.replayIO&&replayIO.tagpro&&replayIO.tagpro.replayPlayer);
+ if(!rp||!rp.player||!window.tagpro||!tagpro.map||+$('#replaySeekBar').prop('max')<=100)return; // still loading
+ var t=rp.player.currentTime;
+ if(!started){
+  if(t>=FROM-1500&&t<=TO){started=true;tagpro.playerId=TARGET;tagpro.viewport.followPlayer=true;
+   bar.textContent='Watch '+NAME+' (the camera follows them). It pauses at the marked moment.';}
+  else if(Date.now()-lastSeek>3000)seekTo(FROM);
+  return;}
+ if(!paused&&t>=MARK){paused=true;setPaused(true);
+  bar.textContent='⏸ The marked moment: what is '+NAME+' doing? (press play to see what happens next)';
+  if(parent)parent.postMessage({labelReplay:'marked'},'*');}
+ if(t>TO+2000&&Date.now()-lastSeek>3000){paused=false;started=false;seekTo(FROM);setPaused(false);} // the client's seek picks its own player: follow again
+}catch(e){}},50);})();
 </script>`;
     // the standard TagPro look (classic textures) rather than tagpro-local's default pack
     const page = fs.readFileSync(path.join(TP, 'server', 'pages', 'replay.html'), 'utf8').replace(/\{\{REPLAY_KEY\}\}/g, id)
@@ -571,6 +577,9 @@ var paused=false,started=false,iv=setInterval(function(){var rp=window.replayIO&
     if (req.method === 'GET' && staticFile(req, res, u.pathname)) return;
     if (limited('ip:' + ip(req), IP_LIMIT, 10e3)) return send(req, res, 429, { error: 'Too many requests. Slow down.' });
     if (req.method === 'GET' && u.pathname === '/labelreplay') {
+      // the client starts a replay at ?t= (milliseconds into the recording): send it straight to the clip
+      const r = !u.searchParams.has('t') && clipReplay(u.searchParams.get('clip'));
+      if (r) { res.writeHead(302, { location: '/labelreplay?clip=' + encodeURIComponent(r.clip.id) + '&t=' + Math.round(r.from), 'cache-control': 'no-store' }); return res.end(); }
       const page = labelReplayPage(u.searchParams.get('clip'));
       res.writeHead(page ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(page || 'No such clip.');
     }
