@@ -136,7 +136,9 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   others' keys assumed constant, and many puzzles already decided at the start. Round 7 (carrier steers behind a
   smart blocker): same. Noise check (JITTER=0.01: every start moved 1 cm) flips 14/104 outcomes, as many as any
   blocker, so all blocker results are within chance. 65/104 puzzles end the same whatever the plans; compare plans by
-  averaging several nudged runs per close puzzle instead.
+  averaging several nudged runs per close puzzle instead. Round 8 did that (40 close puzzles x 6 nudges): pair 58.8%
+  returned vs no blocking 54.6% (per puzzle +4 points, standard error 5): blockers really don't help. Suspect: each
+  plan assumes the other balls keep their keys.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
