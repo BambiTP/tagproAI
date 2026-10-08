@@ -12,6 +12,8 @@
 //           of its own), and touching it counts as done: the collision knocks it off its line
 //   mark    the teammate stays just in front of the chaser nearest the carrier (half a metre towards the carrier,
 //           where that chaser will be in 0.2 s), moving with it, so the chaser has to go round it
+//   smart   mark, and the teammate's search also scores each line by how close the nearest chaser ends up to the
+//           carrier (the other balls move in its lookahead, so a collision that throws a chaser off counts)
 // Each ball plans every 4 ticks and carries out 2 moves per plan; while one plans, the others keep their keys.
 // Ends: a chaser touches the carrier or it pops (returned), the carrier reaches its flag (capped; flag assumed
 // home), 8 s (held). A popped chaser or teammate just stays out.
@@ -23,7 +25,7 @@ const C = require('./run');
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark'];
+const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 const SEARCH = { prune: true, adaptive: false, width: +(process.env.TEAM_W || 10), depth: +(process.env.TEAM_D || 6) };
@@ -72,14 +74,16 @@ function game(s, planA, planB) {
   // the escort: between the carrier and the nearer chaser, a tile from the carrier; or just towards the flag
   const escortTask = () => {
     if (planB === 'alone') return ballTask(goalC.x, goalC.y, { doneAt: () => false });
-    if (planB === 'mark') {
+    if (planB === 'mark' || planB === 'smart') {
       const r = pos(ca), live = chasers.filter(alive);
       if (!live.length) return ballTask(goalC.x, goalC.y, { doneAt: () => false });
       const c = live.reduce((a, b) => (Math.hypot(pos(a).x - r.x, pos(a).y - r.y) <= Math.hypot(pos(b).x - r.x, pos(b).y - r.y) ? a : b));
       const cp = pos(c), cv = vel(c), dx = r.x - cp.x, dy = r.y - cp.y, L = Math.hypot(dx, dy) || 1, k = Math.min(0.5, L / 2);
       let gx = cp.x + cv.x * 0.2 + dx / L * k, gy = cp.y + cv.y * 0.2 + dy / L * k;
       if (!Fc.ok[tileOf(gx) * Fc.H + tileOf(gy)]) { gx = cp.x + dx / L * k; gy = cp.y + dy / L * k; }
-      return ballTask(gx, gy, { doneAt: () => false });
+      // smart: up to 40 extra ticks when a chaser ends the line on top of the carrier, none from 3 m away
+      const danger = () => { const b = pos(ca); let d = Infinity; for (const h of chasers) if (alive(h)) d = Math.min(d, Math.hypot(pos(h).x - b.x, pos(h).y - b.y)); return d < 3 ? 40 * (1 - d / 3) : 0; };
+      return ballTask(gx, gy, { doneAt: () => false, ...(planB === 'smart' ? { extra: danger } : {}) });
     }
     if (planB === 'bump') {
       const r = pos(ca), live = chasers.filter(alive);
