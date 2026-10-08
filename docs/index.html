@@ -115,9 +115,12 @@ th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
    <p>Short clips from real ranked games. One player has a <b style="color:#fff">white ring</b>. The clip stops at the marked moment: what is that player doing right then? Simple rules made a first guess; tell us if it's right or pick the right one. Your answers teach the bots how TagPro is played. <span id="lmine"></span></p></div>
   <div class="hud" style="padding-left:0"><span id="lwho" class="big" style="font-size:18px"></span><span class="grow"></span>
    <select id="lspeed" class="btn"><option value="0.5">0.5×</option><option value="1" selected>1×</option></select>
-   <button class="btn" id="lreplay">Replay (Space)</button></div>
+   <button class="btn" id="lreplay">Replay (Space)</button>
+   <label class="dim" style="white-space:nowrap"><input type="checkbox" id="lrealbox"> Real TagPro client</label>
+   <a class="btn" id="lopen" target="_blank" rel="noopener" style="text-decoration:none">Open full screen ↗</a></div>
   <div style="height:5px;background:#333;border-radius:3px;margin:0 0 8px;position:relative"><i id="lbar" style="display:block;height:100%;background:#4ade4a;width:0"></i><i id="lmark" style="position:absolute;top:-3px;width:3px;height:11px;background:#fff"></i></div>
   <canvas id="lc" class="map"></canvas>
+  <iframe id="lframe" style="display:none;width:100%;height:min(75vh,760px);border:0;border-radius:8px;background:#000" allow="autoplay"></iframe>
   <div class="panel" style="margin-top:10px">
    <div id="lguess" style="font-size:16px;margin-bottom:8px"></div>
    <div id="lbtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
@@ -554,6 +557,7 @@ async function nextClip(){
  if(d.done){$('lguess').textContent='You\'ve labelled every clip we have. Thank you! More will come.';LB.clip=null;return;}
  const c=d.clip;LB.clip=c;LB.t=0;LB.acc=0;LB.pause=0;LB.phase=0;
  lv.setMap(c.tiles,1,{x:-99,y:-99},{x:0,y:0});lv.textured=false;if(texReady===8)useTextures();
+ const realUrl=API+'/labelreplay?clip='+encodeURIComponent(c.id);$('lopen').href=realUrl;showReal(realUrl);
  const who=c.players.find(p=>p.id===c.target)||{};
  $('lwho').innerHTML='<span style="color:'+(who.team===1?'#ff6b6b':'#6bb5ff')+'">'+escH(who.name||'player')+'</span> <span class=dim>('+(who.team===1?'red':'blue')+') · '+escH(c.map)+'</span>';
  $('lmark').style.left=(100*c.at/(c.frames.length-1))+'%';
@@ -565,7 +569,12 @@ async function nextClip(){
   try{const r=await api('/api/label',{clip:c.id,answer:b.dataset.a});$('lmine').textContent='You\'ve labelled '+num(r.mine)+' so far. Thanks!';nextClip();}
   catch(e){$('lguess').textContent=e.message;setTimeout(nextClip,1500);}});
 }
-$('lreplay').onclick=()=>{LB.t=0;LB.acc=0;LB.pause=0;LB.phase=0;};
+$('lreplay').onclick=()=>{LB.t=0;LB.acc=0;LB.pause=0;LB.phase=0;if($('lrealbox').checked)$('lframe').src=$('lopen').href;};
+// the clip in the official game client (served by the puzzle server); remembered between visits
+try{$('lrealbox').checked=localStorage.getItem('tpReal')==='1';}catch(e){}
+function showReal(url){const on=$('lrealbox').checked;$('lframe').style.display=on?'block':'none';$('lc').style.display=on?'none':'';
+ if(on&&url&&$('lframe').src!==url)$('lframe').src=url;if(!on)$('lframe').src='about:blank';}
+$('lrealbox').onchange=()=>{try{localStorage.setItem('tpReal',$('lrealbox').checked?'1':'0');}catch(e){}showReal($('lopen').href);};
 addEventListener('keydown',e=>{if(tab==='label'&&e.code==='Space'&&e.target.tagName!=='INPUT'){e.preventDefault();$('lreplay').click();}});
 // play to the marked moment, hold there, play on to the end, hold, start again
 function stepLabel(dt){

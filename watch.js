@@ -382,6 +382,7 @@ http.createServer((req, res) => {
   const botCache = new Map();
   arena = require('./arena')({ N, record, task, getMap, ready, playable, FIRST, extraOf,
     ownerBest: (s) => (human.best[s] ? human.best[s].ticks : null), labelsDir: path.join(__dirname, 'labels'),
+    tagproLocal: path.join(require('os').homedir(), 'tagpro-local'), replaysDir: path.join(require('os').homedir(), 'nte', 'data', 'replays'),
     botRuns: (s) => {
       if (!ready.has(s)) return null;
       if (!botCache.has(s)) botCache.set(s, JSON.parse(fs.readFileSync(botFile(s), 'utf8')));

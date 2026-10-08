@@ -433,6 +433,52 @@ module.exports = function startArena(ctx) {
       byUser: Object.entries(byUser).map(([k, n]) => ({ name: getUser(k) ? getUser(k).name : k, n, counted: !!counts(getUser(k)) })).sort((a, b) => b.n - a.n) };
   }
 
+  // ---------- clips in the real TagPro client (the user chose to publish the ranked replays this way) ----------
+  // /labelreplay?clip=ID is tagpro-local's replay page plus a small script that jumps to the clip, follows the
+  // ringed player and pauses at the marked moment; the client fetches the ranked replay from
+  // /replays/gameFile?key=ID. Its scripts, styles, textures and sounds come only from tagpro-local's public folder.
+  const TP = ctx.tagproLocal, REPLAYS = ctx.replaysDir;
+  const STATIC = ['/R-62bb0909b74c-z/', '/textures/', '/images/', '/sounds/', '/socket.io/'];
+  const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml',
+    '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.eot': 'application/vnd.ms-fontobject', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.json': 'application/json', '.ico': 'image/x-icon' };
+  function staticFile(req, res, p) {
+    if (!TP || !(STATIC.some((d) => p.startsWith(d)) || p === '/favicon.ico')) return false;
+    const root = path.join(TP, 'public'); let f;
+    try { f = path.resolve(root, '.' + decodeURIComponent(p)); } catch (e) { res.writeHead(400); res.end(); return true; }
+    if (!f.startsWith(root + path.sep) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { res.writeHead(404); res.end(); return true; }
+    res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream', 'cache-control': 'public, max-age=86400' });
+    fs.createReadStream(f).pipe(res); return true;
+  }
+  function clipReplay(id) {
+    if (!LDIR || !/^[0-9a-f]{8}-\d+-\d+$/.test(id || '')) return null;
+    const cf = path.join(LDIR, 'clips', id + '.json'); if (!fs.existsSync(cf)) return null;
+    const c = JSON.parse(fs.readFileSync(cf, 'utf8')), u = c.replay;
+    if (!/^[0-9a-f-]{36}$/.test(u)) return null;
+    const f = path.join(REPLAYS, u.slice(0, 2), u.slice(2, 4), u + '.ndjson.gz'); if (!fs.existsSync(f)) return null;
+    const text = require('zlib').gunzipSync(fs.readFileSync(f)).toString();
+    let start = 0; for (const l of text.split('\n')) { if (l.includes('"time"') && /"state":1\b/.test(l)) { start = JSON.parse(l)[0]; break; } }
+    const frame = +id.split('-')[2], step = 1000 / c.hz;
+    return { clip: c, text, from: start + (frame - c.at) * step, mark: start + frame * step, to: start + (frame - c.at + c.frames.length - 1) * step };
+  }
+  function labelReplayPage(id) {
+    const r = clipReplay(id); if (!r) return null;
+    const who = r.clip.players.find((p) => p.id === r.clip.target) || {};
+    const ctl = `<script>
+(function(){var FROM=${r.from},MARK=${r.mark},TO=${r.to},TARGET=${r.clip.target},NAME=${JSON.stringify(String(who.name || '')).replace(/</g, '\\u003c')};
+var bar=document.createElement('div');bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#000c;color:#fff;font:600 15px system-ui;padding:6px 10px';
+bar.textContent='Watch '+NAME+' (the camera follows them). Loading…';document.addEventListener('DOMContentLoaded',function(){document.body.appendChild(bar);});
+var paused=false,iv=setInterval(function(){var rp=window.replayIO&&replayIO.tagpro&&replayIO.tagpro.replayPlayer;if(!rp||!window.tagpro||!tagpro.map)return;clearInterval(iv);
+ try{rp.seek(FROM);}catch(e){}
+ setTimeout(function(){try{rp.play();}catch(e){}bar.textContent='Watch '+NAME+' (the camera follows them). It pauses at the marked moment.';},400);
+ setInterval(function(){try{tagpro.playerId=TARGET;tagpro.viewport.followPlayer=true;var t=rp.player&&rp.player.currentTime;
+  if(t!=null&&!paused&&t>=MARK){paused=true;rp.pause();bar.textContent='⏸ The marked moment: what is '+NAME+' doing? (press play to see what happens next)';if(parent)parent.postMessage({labelReplay:'marked'},'*');}
+  if(t!=null&&t>TO+2000){paused=false;rp.seek(FROM);rp.play();}}catch(e){}},50);
+},200);})();
+</script>`;
+    const page = fs.readFileSync(path.join(TP, 'server', 'pages', 'replay.html'), 'utf8').replace(/\{\{REPLAY_KEY\}\}/g, id);
+    return page.replace('</head>', ctl + '</head>');
+  }
+
   // every puzzle a player has finished: their best against the WR and the planning bot
   function myTimes(key) {
     const u = users[key];
@@ -510,8 +556,19 @@ module.exports = function startArena(ctx) {
 
   const server = http.createServer((req, res) => {
     if (req.method === 'OPTIONS') return send(req, res, 204);
-    if (limited('ip:' + ip(req), IP_LIMIT, 10e3)) return send(req, res, 429, { error: 'Too many requests. Slow down.' });
     const u = new URL(req.url, 'http://x');
+    // the real game client's files for /labelreplay (not counted against the request limit: a page load is many files)
+    if (req.method === 'GET' && staticFile(req, res, u.pathname)) return;
+    if (limited('ip:' + ip(req), IP_LIMIT, 10e3)) return send(req, res, 429, { error: 'Too many requests. Slow down.' });
+    if (req.method === 'GET' && u.pathname === '/labelreplay') {
+      const page = labelReplayPage(u.searchParams.get('clip'));
+      res.writeHead(page ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(page || 'No such clip.');
+    }
+    if (req.method === 'GET' && u.pathname === '/replays/gameFile') {
+      const r = clipReplay(u.searchParams.get('key'));
+      if (!r) { res.writeHead(404, { 'X-Replay-Error': 'Replay not found' }); return res.end('Replay not found'); }
+      res.writeHead(200, { 'content-type': 'text/plain', 'X-Replay-Filename': (r.clip.map + ' ' + r.clip.replay.slice(0, 8)).replace(/[^\w .-]/g, ''), 'cache-control': 'no-store' }); return res.end(r.text);
+    }
     let raw = '', big = false;
     req.on('data', (c) => { raw += c; if (raw.length > 64e3 && !big) { big = true; send(req, res, 413, { error: 'Too big.' }); req.destroy(); } });
     req.on('end', () => {
