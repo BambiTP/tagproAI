@@ -149,11 +149,19 @@ try{TOKEN=localStorage.getItem('tpToken');}catch(e){}
 // the server is only ever the Cloudflare tunnel published in the gist (or a local one when testing), so a
 // link can't point the login form at someone else's server
 const TUNNEL=/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/, LOCAL=/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+// tries, in order: the last address that worked, GitHub's gist API (60 lookups an hour per connection),
+// and the gist's raw file (no such limit, but can be a few minutes stale). Each must answer its health check.
 async function findServer(){
  const q=new URLSearchParams(location.search).get('api');
  if(q&&LOCAL.test(q)&&LOCAL.test(location.origin))return q;
- try{const g=await (await fetch('https://api.github.com/gists/'+GIST,{cache:'no-store'})).json();
-  const url=JSON.parse(g.files[GIST_FILE].content).url;if(TUNNEL.test(url))return url;}catch(e){}
+ const alive=async u=>{try{return TUNNEL.test(u)&&(await fetch(u+'/api/health',{cache:'no-store'})).ok;}catch(e){return false;}};
+ const tries=[
+  async()=>{try{return localStorage.getItem('tpApi');}catch(e){return null;}},
+  async()=>JSON.parse((await (await fetch('https://api.github.com/gists/'+GIST,{cache:'no-store'})).json()).files[GIST_FILE].content).url,
+  async()=>JSON.parse(await (await fetch('https://gist.githubusercontent.com/BambiTP/'+GIST+'/raw/'+GIST_FILE+'?t='+Date.now(),{cache:'no-store'})).text()).url,
+ ];
+ for(const t of tries){let u=null;try{u=await t();}catch(e){}
+  if(u&&await alive(u)){try{localStorage.setItem('tpApi',u);}catch(e){}return u;}}
  return null;
 }
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0;};
@@ -483,8 +491,7 @@ addEventListener('resize',()=>{if(P.d&&P.d.seed)pv.layout();if(VW.on&&VW.d)vv.la
  showLogin();$('lstatus').textContent='Finding the puzzle server…';
  API=await findServer();
  if(!API){$('lstatus').textContent='The puzzle server is offline right now. Try again later.';return;}
- try{await (await fetch(API+'/api/health')).json();$('lstatus').textContent='';}
- catch(e){$('lstatus').textContent='The puzzle server is offline or restarting. Try again in a minute.';return;}
+ $('lstatus').textContent='';
  pickers();requestAnimationFrame(frame);
  if(TOKEN)try{enter(await api('/api/me'));}catch(e){}
  if(location.hash==='#watch')openViewer();
