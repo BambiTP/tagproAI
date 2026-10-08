@@ -14,6 +14,8 @@
 //           where that chaser will be in 0.2 s), moving with it, so the chaser has to go round it
 //   smart   mark, and the teammate's search also scores each line by how close the nearest chaser ends up to the
 //           carrier (the other balls move in its lookahead, so a collision that throws a chaser off counts)
+//   pair    smart, and the carrier uses it: a chaser with the teammate between it and the carrier (within half a
+//           metre of the line between them) does not count as a danger, so the carrier steers behind its blocker
 // Each ball plans every 4 ticks and carries out 2 moves per plan; while one plans, the others keep their keys.
 // Ends: a chaser touches the carrier or it pops (returned), the carrier reaches its flag (capped; flag assumed
 // home), 8 s (held). A popped chaser or teammate just stays out.
@@ -25,7 +27,7 @@ const C = require('./run');
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart'];
+const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 const SEARCH = { prune: true, adaptive: false, width: +(process.env.TEAM_W || 10), depth: +(process.env.TEAM_D || 6) };
@@ -68,13 +70,18 @@ function game(s, planA, planB) {
     if (Math.hypot(pos(m2).x - gx, pos(m2).y - gy) < 0.2) { t.goal = { x: r.x, y: r.y }; t.F = N.field(sim.tiles, tileOf(r.x), tileOf(r.y)); } // there: go at the carrier
     return t;
   };
+  // the carrier's teammate is between chaser a and the point (x, y): within half a metre of the segment, not at its ends
+  const shielded = (a, x, y) => { if (es.dead) return false; const b = pos(es), dx = x - a.x, dy = y - a.y, L2 = dx * dx + dy * dy || 1;
+    const u = ((b.x - a.x) * dx + (b.y - a.y) * dy) / L2; if (u <= 0.1 || u >= 0.9) return false;
+    return Math.hypot(a.x + u * dx - b.x, a.y + u * dy - b.y) < 0.5; };
   // the carrier: home, a touched line is lost, keep away from both chasers
   const carrierTask = { touch: true, goal: goalC, F: Fc, doneAt: (x, y) => Math.hypot(x - goalC.x, y - goalC.y) < CAP_R, lost: touching,
-    extra: (x, y) => { let e = 0; for (const c of chasers) if (alive(c)) { const a = pos(c), d = Math.hypot(x - a.x, y - a.y); if (d < 1.2) e += 30 * (1 - d / 1.2); } return e; } };
+    extra: (x, y) => { let e = 0; for (const c of chasers) if (alive(c)) { const a = pos(c), d = Math.hypot(x - a.x, y - a.y);
+      if (d < 1.2 && !(planB === 'pair' && shielded(a, x, y))) e += 30 * (1 - d / 1.2); } return e; } };
   // the escort: between the carrier and the nearer chaser, a tile from the carrier; or just towards the flag
   const escortTask = () => {
     if (planB === 'alone') return ballTask(goalC.x, goalC.y, { doneAt: () => false });
-    if (planB === 'mark' || planB === 'smart') {
+    if (planB === 'mark' || planB === 'smart' || planB === 'pair') {
       const r = pos(ca), live = chasers.filter(alive);
       if (!live.length) return ballTask(goalC.x, goalC.y, { doneAt: () => false });
       const c = live.reduce((a, b) => (Math.hypot(pos(a).x - r.x, pos(a).y - r.y) <= Math.hypot(pos(b).x - r.x, pos(b).y - r.y) ? a : b));
@@ -83,7 +90,7 @@ function game(s, planA, planB) {
       if (!Fc.ok[tileOf(gx) * Fc.H + tileOf(gy)]) { gx = cp.x + dx / L * k; gy = cp.y + dy / L * k; }
       // smart: up to 40 extra ticks when a chaser ends the line on top of the carrier, none from 3 m away
       const danger = () => { const b = pos(ca); let d = Infinity; for (const h of chasers) if (alive(h)) d = Math.min(d, Math.hypot(pos(h).x - b.x, pos(h).y - b.y)); return d < 3 ? 40 * (1 - d / 3) : 0; };
-      return ballTask(gx, gy, { doneAt: () => false, ...(planB === 'smart' ? { extra: danger } : {}) });
+      return ballTask(gx, gy, { doneAt: () => false, ...(planB === 'smart' || planB === 'pair' ? { extra: danger } : {}) });
     }
     if (planB === 'bump') {
       const r = pos(ca), live = chasers.filter(alive);
