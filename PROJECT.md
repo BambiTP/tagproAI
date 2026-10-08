@@ -133,7 +133,10 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   intercepting vs guarding the flag barely differs; the first blocker (stays between carrier and nearest chaser)
   did not help the carrier. Neither did bump, mark or smart-mark blockers (rounds 4-6): every blocker 63-69% returned,
   the same as none. Open problem; suspects: the carrier never steers behind its blocker, 0.4 s lookahead with the
-  others' keys assumed constant, and many puzzles already decided at the start.
+  others' keys assumed constant, and many puzzles already decided at the start. Round 7 (carrier steers behind a
+  smart blocker): same. Noise check (JITTER=0.01: every start moved 1 cm) flips 14/104 outcomes, as many as any
+  blocker, so all blocker results are within chance. 65/104 puzzles end the same whatever the plans; compare plans by
+  averaging several nudged runs per close puzzle instead.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
