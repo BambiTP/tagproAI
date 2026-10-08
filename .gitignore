@@ -6,3 +6,6 @@ s[AB4].json
 runs/
 net.json
 recordings/
+labels/clips/
+labels/replays.txt
+labels/*.log

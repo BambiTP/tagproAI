@@ -381,7 +381,7 @@ http.createServer((req, res) => {
   // the public puzzle server for the GitHub Pages site, on its own port (see arena.js and tunnel.js)
   const botCache = new Map();
   arena = require('./arena')({ N, record, task, getMap, ready, playable, FIRST, extraOf,
-    ownerBest: (s) => (human.best[s] ? human.best[s].ticks : null),
+    ownerBest: (s) => (human.best[s] ? human.best[s].ticks : null), labelsDir: path.join(__dirname, 'labels'),
     botRuns: (s) => {
       if (!ready.has(s)) return null;
       if (!botCache.has(s)) botCache.set(s, JSON.parse(fs.readFileSync(botFile(s), 'utf8')));

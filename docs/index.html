@@ -72,7 +72,7 @@ th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
  <div id="top">
   <b style="color:#fff">TagPro Puzzles</b>
   <div class="tabs"><button class="btn on" data-t="play">Play</button><button class="btn" data-t="board">Leaderboard</button>
-   <button class="btn" data-t="help">How it works</button><button class="btn" id="tview">Watch bots</button><button class="btn" data-t="admin" id="tadmin" style="display:none">Admin</button></div>
+   <button class="btn" data-t="label">Label replays</button><button class="btn" data-t="help">How it works</button><button class="btn" id="tview">Watch bots</button><button class="btn" data-t="admin" id="tadmin" style="display:none">Admin</button></div>
   <span class="grow"></span>
   <span id="meline"></span><button class="btn" id="blogout">Log out</button>
  </div>
@@ -110,9 +110,24 @@ th{color:var(--dim);font-weight:600}.scroll{overflow-x:auto}
   <p style="font-size:14px;color:#ddd;line-height:1.6"><b>Fair play:</b> restarting quickly is fine. Accounts are flagged only for long streaks of restarts without pressing a movement key, or for restarting far faster than players normally do on that puzzle; flagged accounts are left out of the puzzle difficulty numbers and records until an admin reviews them. Resetting before you press a key doesn't cost rating.</p>
  </div></div></div>
 
+ <div id="label" class="tab"><div class="wrap" style="max-width:1200px">
+  <div class="panel"><h3>Help label what players are doing</h3>
+   <p>Short clips from real ranked games. One player has a <b style="color:#fff">white ring</b>. The clip stops at the marked moment: what is that player doing right then? Simple rules made a first guess; tell us if it's right or pick the right one. Your answers teach the bots how TagPro is played. <span id="lmine"></span></p></div>
+  <div class="hud" style="padding-left:0"><span id="lwho" class="big" style="font-size:18px"></span><span class="grow"></span>
+   <select id="lspeed" class="btn"><option value="0.5">0.5×</option><option value="1" selected>1×</option></select>
+   <button class="btn" id="lreplay">Replay (Space)</button></div>
+  <div style="height:5px;background:#333;border-radius:3px;margin:0 0 8px;position:relative"><i id="lbar" style="display:block;height:100%;background:#4ade4a;width:0"></i><i id="lmark" style="position:absolute;top:-3px;width:3px;height:11px;background:#fff"></i></div>
+  <canvas id="lc" class="map"></canvas>
+  <div class="panel" style="margin-top:10px">
+   <div id="lguess" style="font-size:16px;margin-bottom:8px"></div>
+   <div id="lbtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  </div>
+  <div class="panel"><h3>What the labels mean</h3><div id="ldefs" style="font-size:13.5px;line-height:1.7;color:#ccc"></div></div>
+ </div></div>
  <div id="admin" class="tab"><div class="wrap"><div class="panel"><h3>Players</h3>
   <p>Restarts: total · without a movement key · longest run of key-less restarts · restarts under a third of the puzzle's typical restart time (of those that could be judged). "Counted" means their runs shape puzzle ratings and records. Delete removes all their runs (the account stays).</p>
-  <div class="scroll"><table id="tadminp"></table></div></div></div></div>
+  <div class="scroll"><table id="tadminp"></table></div></div>
+  <div class="panel"><h3>Replay labels</h3><p>How often people agree with each rule's first guess. Low agreement means the rule needs fixing.</p><div class="scroll"><table id="tadminl"></table></div></div></div></div>
 </div>
 <div id="card"></div><div id="count"></div>
 <div id="times"><div class="box">
@@ -260,7 +275,7 @@ function enter(m){$('login').style.display='none';$('app').style.display='block'
 let tab='play';
 function setTab(t){tab=t;document.querySelectorAll('#top .tabs .btn').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.id===t));
- if(t==='play')newPuzzle(); if(t==='board')drawBoard(); if(t==='admin')drawAdmin();}
+ if(t==='play')newPuzzle(); if(t==='board')drawBoard(); if(t==='admin')drawAdmin(); if(t==='label')nextClip();}
 document.querySelectorAll('#top .tabs .btn').forEach(b=>b.onclick=()=>setTab(b.dataset.t));
 
 // ---------- play ----------
@@ -432,7 +447,15 @@ document.addEventListener('click',async e=>{const row=e.target.closest&&e.target
  try{const d=await api('/api/pick',{seed:+row.dataset.seed});setTab('play');showPuzzle(d);}catch(err){alert(err.message);}});
 
 // ---------- admin ----------
+async function drawLabelStats(){
+ let d;try{d=await api('/api/admin/labels');}catch(e){return;}
+ $('tadminl').innerHTML='<tr><th>Rules said</th><th>Answers</th><th>People agreed</th><th>Not sure</th><th>Most often said instead</th></tr>'+
+  Object.entries(d.byRule).sort((a,b)=>b[1].n-a[1].n).map(([k,r])=>{const top=Object.entries(r.instead).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([x,n])=>escH(x)+' ('+num(n)+')').join(', ');
+   return '<tr><td>'+escH(k)+'</td><td>'+num(r.n)+'</td><td>'+Math.round(100*r.agree/r.n)+'%</td><td>'+num(r.unclear)+'</td><td>'+(top||'—')+'</td></tr>';}).join('')+
+  '<tr><td colspan=5 class=dim>'+num(d.clips)+' clips, '+num(d.answers)+' answers. Labellers: '+d.byUser.slice(0,10).map(u=>escH(u.name)+' '+num(u.n)+(u.counted?'':' (not counted)')).join(', ')+'</td></tr>';
+}
 async function drawAdmin(){
+ drawLabelStats();
  const ps=await api('/api/admin/players');
  const act=(k,a,label)=>'<button class="btn" style="padding:2px 8px" data-k="'+escH(k)+'" data-a="'+a+'">'+label+'</button>';
  $('tadminp').innerHTML='<tr><th>Player</th><th>Status</th><th>Rating</th><th>Puzzles</th><th>Tries</th><th>Restarts</th><th>Deaths</th><th>Flags</th><th>Last seen</th><th>Actions</th></tr>'+
@@ -479,11 +502,63 @@ $('bwatch').onclick=openViewer;$('tview').onclick=openViewer;$('vplay').onclick=
 $('vnext').onclick=()=>nextView();$('vMode').onchange=()=>{VW.d=null;nextView();};
 addEventListener('hashchange',()=>{if(location.hash==='#watch'&&!VW.on)openViewer();});
 
+// ---------- labelling replay clips ----------
+const LDEF={carrying:'Holding the enemy flag.',regrab:'Waiting on the empty enemy flag spot so the flag can be grabbed again the moment your carrier is popped.',
+ 'anti regrab':'Your flag is out: blocking the enemy player waiting on your flag spot, so their regrab chain breaks.',chasing:'Your flag is out: going after the enemy carrier to pop them.',
+ OD:'Your flag is out: guarding the enemy flag spot so their carrier can\'t come home and cap, instead of chasing.',escort:'Helping your own carrier: blocking chasers or clearing a route.',
+ 'home defence':'Your flag is home: defending in your base.','grab attempt':'In the enemy base trying to grab, or waiting for a chance.',
+ 'pup fight':'Fighting over a powerup that just spawned or is about to.',moving:'Getting somewhere: back to position, to the other base, and so on.'};
+const lv=new View($('lc'));const LB={clip:null,t:0,acc:0,pause:0,phase:0};
+$('ldefs').innerHTML=Object.entries(LDEF).map(([k,v])=>'<div><b style="color:#fff">'+k+'</b>: '+v+'</div>').join('');
+async function nextClip(){
+ $('lguess').textContent='Loading a clip…';$('lbtns').innerHTML='';
+ let d;try{d=await api('/api/label/next');}catch(e){$('lguess').textContent=e.message;return;}
+ $('lmine').textContent='You\'ve labelled '+num(d.mine)+' so far.';
+ if(d.done){$('lguess').textContent='You\'ve labelled every clip we have. Thank you! More will come.';LB.clip=null;return;}
+ const c=d.clip;LB.clip=c;LB.t=0;LB.acc=0;LB.pause=0;LB.phase=0;
+ lv.setMap(c.tiles,1,{x:-99,y:-99},{x:0,y:0});
+ const who=c.players.find(p=>p.id===c.target)||{};
+ $('lwho').innerHTML='<span style="color:'+(who.team===1?'#ff6b6b':'#6bb5ff')+'">'+escH(who.name||'player')+'</span> <span class=dim>('+(who.team===1?'red':'blue')+') · '+escH(c.map)+'</span>';
+ $('lmark').style.left=(100*c.at/(c.frames.length-1))+'%';
+ const rule=d.labels.includes(c.rule)?c.rule:'moving';
+ $('lguess').innerHTML='What is <b>'+escH(who.name||'the ringed player')+'</b> doing at the marked moment? The rules guessed: <b style="color:#4ade4a">'+escH(rule)+'</b>'+(c.past!=null?' <span class=dim>(past '+num(c.past)+')</span>':'');
+ $('lbtns').innerHTML='<button class="btn primary" data-a="'+escH(rule)+'">✓ Yes, '+escH(rule)+'</button><span class=dim style="align-self:center;margin:0 4px">No, it\'s:</span>'+
+  d.labels.filter(l=>l!==rule).map(l=>'<button class="btn" data-a="'+escH(l)+'" title="'+escH(LDEF[l]||'')+'">'+escH(l)+'</button>').join('')+'<button class="btn" data-a="unclear">Not sure</button>';
+ $('lbtns').querySelectorAll('button').forEach(b=>b.onclick=async()=>{$('lbtns').querySelectorAll('button').forEach(x=>x.disabled=true);
+  try{const r=await api('/api/label',{clip:c.id,answer:b.dataset.a});$('lmine').textContent='You\'ve labelled '+num(r.mine)+' so far. Thanks!';nextClip();}
+  catch(e){$('lguess').textContent=e.message;setTimeout(nextClip,1500);}});
+}
+$('lreplay').onclick=()=>{LB.t=0;LB.acc=0;LB.pause=0;LB.phase=0;};
+addEventListener('keydown',e=>{if(tab==='label'&&e.code==='Space'&&e.target.tagName!=='INPUT'){e.preventDefault();$('lreplay').click();}});
+// play to the marked moment, hold there, play on to the end, hold, start again
+function stepLabel(dt){
+ const c=LB.clip;if(!c)return;const last=c.frames.length-1;
+ if(LB.pause>0){LB.pause-=dt*1000;if(LB.pause<=0&&LB.phase===2){LB.t=0;LB.phase=0;}return;}
+ LB.acc+=dt*c.hz*$('lspeed').value;
+ while(LB.acc>=1){LB.acc--;LB.t++;
+  if(LB.phase===0&&LB.t>=c.at){LB.t=c.at;LB.phase=1;LB.pause=1600;LB.acc=0;return;}
+  if(LB.t>=last){LB.t=last;LB.phase=2;LB.pause=1200;LB.acc=0;return;}}
+}
+function drawLabel(){
+ const c=LB.clip;if(!c)return;const g=lv.g,px=lv.px,P=v=>(v+.5)*px;g.drawImage(lv.bg,0,0);
+ const i=Math.min(LB.t,c.frames.length-1),f=c.frames[i],nx=c.frames[Math.min(i+1,c.frames.length-1)],k=LB.pause>0?0:LB.acc;
+ c.players.forEach((p,j)=>{const a=f[j];if(!a)return;const b=nx[j]||a,x=a[0]+(b[0]-a[0])*k,y=a[1]+(b[1]-a[1])*k,r=px*.47;
+  g.globalAlpha=a[3]?.25:1;g.fillStyle=p.team===1?'#e04848':'#4a86e0';circ(g,P(x),P(y),r);
+  if(a[2]){g.lineWidth=Math.max(2,px/8);g.strokeStyle=a[2]===1?'#ff9a9a':a[2]===2?'#9ac4ff':'#ffe066';g.beginPath();g.arc(P(x),P(y),r*1.25,0,7);g.stroke();
+   g.fillStyle=a[2]===1?'#d33':'#36d';g.fillRect(P(x)-r*.3,P(y)-r*1.9,r*.8,r*.5);}
+  if(p.id===c.target){g.lineWidth=Math.max(3,px/6);g.strokeStyle='#fff';g.beginPath();g.arc(P(x),P(y),r*1.55,0,7);g.stroke();}
+  g.fillStyle=p.id===c.target?'#fff':'#bbb';g.font=(p.id===c.target?'bold ':'')+Math.max(10,px/2.8)+'px sans-serif';g.fillText(p.name.slice(0,14),P(x)+r+2,P(y)-r);
+  g.globalAlpha=1;});
+ if(LB.phase===1&&LB.pause>0){g.fillStyle='#000a';g.fillRect(0,0,lv.cv.width,34);g.fillStyle='#fff';g.font='bold 18px sans-serif';g.fillText('⏸ The marked moment',10,23);}
+ $('lbar').style.width=(100*i/(c.frames.length-1))+'%';
+}
+
 // ---------- start ----------
 let last=performance.now();
 function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
  if(VW.on){stepView(dt);drawView();$('count').style.display='none';}
- else if(tab==='play'){stepPlay(dt);drawPlay();}else $('count').style.display='none';
+ else if(tab==='label'){stepLabel(dt);drawLabel();$('count').style.display='none';}
+ else if(tab==='play'){stepPlay(dt);drawPlay();}else if(tab!=='label')$('count').style.display='none';
  requestAnimationFrame(frame);}
 addEventListener('resize',()=>{if(P.d&&P.d.seed)pv.layout();if(VW.on&&VW.d)vv.layout();});
 (async()=>{

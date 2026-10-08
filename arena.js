@@ -381,6 +381,58 @@ module.exports = function startArena(ctx) {
     }).sort((a, b) => b.rating - a.rating);
     return { players, puzzles: pz };
   }
+  // ---------- labelling replay clips (labels/extract.js makes them) ----------
+  // Players check the rules' first-guess label for one player at one moment of a ranked game, or pick the
+  // right one. Each clip goes to people who haven't seen it, fewest answers first. Answers are kept per
+  // player (flagged/banned players are left out when training later).
+  const LDIR = ctx.labelsDir, LANS = path.join(DIR, 'labels.jsonl');
+  const LABEL_SET = ['carrying', 'regrab', 'anti regrab', 'chasing', 'OD', 'escort', 'home defence', 'grab attempt', 'pup fight', 'moving'];
+  let clipIds = [], clipRule = {}, clipsReadAt = 0;
+  const answers = fs.existsSync(LANS) ? fs.readFileSync(LANS, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+  const answerCount = {}, seen = {};
+  for (const a of answers) { answerCount[a.clip] = (answerCount[a.clip] || 0) + 1; (seen[a.u] = seen[a.u] || new Set()).add(a.clip); }
+  function loadClips() { // the folder grows while extraction runs: re-read it at most once a minute
+    if (!LDIR || now() - clipsReadAt < 60e3) return;
+    clipsReadAt = now();
+    const dir = path.join(LDIR, 'clips'); if (!fs.existsSync(dir)) return;
+    clipIds = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5));
+    for (const id of clipIds) if (!clipRule[id]) { const m = /"rule":"([^"]+)"/.exec(fs.readFileSync(path.join(dir, id + '.json'), 'utf8').slice(0, 400)); clipRule[id] = m ? m[1] : null; }
+  }
+  function nextClip(key) {
+    loadClips();
+    const mine = seen[key] || new Set(); let best = null, bestN = Infinity, ties = 0;
+    for (const id of clipIds) {
+      if (mine.has(id)) continue;
+      const n = answerCount[id] || 0;
+      if (n < bestN) { best = id; bestN = n; ties = 1; } else if (n === bestN && Math.random() < 1 / ++ties) best = id;
+    }
+    if (!best) return { done: true, mine: mine.size };
+    const clip = JSON.parse(fs.readFileSync(path.join(LDIR, 'clips', best + '.json'), 'utf8'));
+    return { clip, labels: LABEL_SET, mine: mine.size };
+  }
+  function answerClip(key, body) {
+    const id = String(body.clip || ''), ans = String(body.answer || '');
+    if (!/^[0-9a-f]{8}-\d+-\d+$/.test(id) || !clipRule[id]) throw new Error('Unknown clip.');
+    if (ans !== 'unclear' && !LABEL_SET.includes(ans)) throw new Error('Unknown label.');
+    if ((seen[key] || new Set()).has(id)) throw new Error('You already labelled this one.');
+    const a = { u: key, clip: id, rule: clipRule[id], answer: ans, at: now() };
+    answers.push(a); fs.appendFileSync(LANS, JSON.stringify(a) + '\n');
+    answerCount[id] = (answerCount[id] || 0) + 1; (seen[key] = seen[key] || new Set()).add(id);
+    return { ok: true, mine: seen[key].size };
+  }
+  // for admins: how often people agree with each rule, what they say instead, and who labels most
+  function labelStats() {
+    loadClips();
+    const byRule = {}, byUser = {};
+    for (const a of answers) {
+      const r = (byRule[a.rule] = byRule[a.rule] || { n: 0, agree: 0, unclear: 0, instead: {} });
+      r.n++; if (a.answer === a.rule) r.agree++; else if (a.answer === 'unclear') r.unclear++; else r.instead[a.answer] = (r.instead[a.answer] || 0) + 1;
+      byUser[a.u] = (byUser[a.u] || 0) + 1;
+    }
+    return { clips: clipIds.length, answers: answers.length, byRule,
+      byUser: Object.entries(byUser).map(([k, n]) => ({ name: getUser(k) ? getUser(k).name : k, n, counted: !!counts(getUser(k)) })).sort((a, b) => b.n - a.n) };
+  }
+
   // every puzzle a player has finished: their best against the WR and the planning bot
   function myTimes(key) {
     const u = users[key];
@@ -524,7 +576,13 @@ module.exports = function startArena(ctx) {
         }
         if (p === '/api/next' && post) return send(req, res, 200, next(key));
         if (p === '/api/back' && post) return send(req, res, 200, back(key));
+        if (p === '/api/label/next') return send(req, res, 200, nextClip(key));
+        if (p === '/api/label' && post) {
+          if (limited('label:' + key, 1, 1500)) return send(req, res, 429, { error: 'Take a second to watch the clip.' });
+          return send(req, res, 200, answerClip(key, body));
+        }
         if (p.startsWith('/api/admin/')) {
+          if (p === '/api/admin/labels' && user.admin) return send(req, res, 200, labelStats());
           if (!user.admin) return send(req, res, 403, { error: 'Admins only.' });
           if (p === '/api/admin/players') return send(req, res, 200, adminList());
           if (p === '/api/admin/action' && post) return send(req, res, 200, adminAction(body));
