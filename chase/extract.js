@@ -101,6 +101,9 @@ function scenarios(file) {
             carrier: { id: +cid, name: names[cid] || '', team },
             startDist: +dist.toFixed(2), ms: end - t, ghost, human,
             tiles, tileUps: ups.filter(([ut]) => ut > t && ut <= end).map(([ut, x, y, v]) => [Math.round((ut - t) * 60 / 1000), x, y, v]),
+            // everyone else at the start, for games with more players (chase/team.js)
+            others: Object.entries(tr).filter(([id]) => id !== did && id !== cid).map(([id, ot]) => { const o = at(ot, t);
+              return o && !o[6] ? { id: +id, name: names[id] || '', team: o[7], x: o[1], y: o[2], vx: o[3], vy: o[4] } : null; }).filter(Boolean),
             outcome: cap && te <= t + WINDOW ? 'cap' : real != null ? 'returned' : returner && te <= t + WINDOW ? 'returned by someone else' : 'still held',
             realMs: real });
           break;
