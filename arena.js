@@ -469,13 +469,16 @@ var bar=document.createElement('div');bar.style.cssText='position:fixed;top:0;le
 bar.textContent='Watch '+NAME+' (the camera follows them). Loading…';document.addEventListener('DOMContentLoaded',function(){document.body.appendChild(bar);});
 var paused=false,iv=setInterval(function(){var rp=window.replayIO&&replayIO.tagpro&&replayIO.tagpro.replayPlayer;if(!rp||!window.tagpro||!tagpro.map)return;clearInterval(iv);
  try{rp.seek(FROM);}catch(e){}
- setTimeout(function(){try{rp.play();}catch(e){}bar.textContent='Watch '+NAME+' (the camera follows them). It pauses at the marked moment.';},400);
- setInterval(function(){try{tagpro.playerId=TARGET;tagpro.viewport.followPlayer=true;var t=rp.player&&rp.player.currentTime;
+ // point the camera at the ringed player once, then leave the client's own smooth camera alone
+ setTimeout(function(){try{tagpro.playerId=TARGET;tagpro.viewport.followPlayer=true;rp.play();}catch(e){}bar.textContent='Watch '+NAME+' (the camera follows them). It pauses at the marked moment.';},400);
+ setInterval(function(){try{var t=rp.player&&rp.player.currentTime;
   if(t!=null&&!paused&&t>=MARK){paused=true;rp.pause();bar.textContent='⏸ The marked moment: what is '+NAME+' doing? (press play to see what happens next)';if(parent)parent.postMessage({labelReplay:'marked'},'*');}
   if(t!=null&&t>TO+2000){paused=false;rp.seek(FROM);rp.play();}}catch(e){}},50);
 },200);})();
 </script>`;
-    const page = fs.readFileSync(path.join(TP, 'server', 'pages', 'replay.html'), 'utf8').replace(/\{\{REPLAY_KEY\}\}/g, id);
+    // the standard TagPro look (classic textures) rather than tagpro-local's default pack
+    const page = fs.readFileSync(path.join(TP, 'server', 'pages', 'replay.html'), 'utf8').replace(/\{\{REPLAY_KEY\}\}/g, id)
+      .replace(/\/textures\/musclescupgradients\//g, '/textures/classic/');
     return page.replace('</head>', ctl + '</head>');
   }
 
