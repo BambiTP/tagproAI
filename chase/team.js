@@ -45,9 +45,13 @@ function game(s, planA, planB) {
     const v = s.tiles[x][y]; if (C.COPY.has(C.kind(v)) && String(v) !== String(sim.tiles[x][y])) sim.setTile(x, y, typeof v === 'string' ? v : +v, true);
   }
   const ch = sim.addBall(s.chaserTeam), m2 = sim.addBall(s.chaserTeam), ca = sim.addBall(s.carrier.team), es = sim.addBall(s.carrier.team);
+  // JITTER=<metres>: nudge every start by that much (a fixed direction per ball), to measure how much chance alone changes
+  const J = +(process.env.JITTER || 0);
+  const cvx = (g3[0] - g0[0]) * 60 / n3, cvy = (g3[1] - g0[1]) * 60 / n3, cx0 = g0[0] - J;
+  if (J) { s.chaser.x += J; mate.y += J; escort.y -= J; }
   sim.place(ch, s.chaser.x, s.chaser.y, s.chaser.vx, s.chaser.vy);
   sim.place(m2, mate.x, mate.y, mate.vx, mate.vy);
-  sim.place(ca, g0[0], g0[1], (g3[0] - g0[0]) * 60 / n3, (g3[1] - g0[1]) * 60 / n3);
+  sim.place(ca, cx0, g0[1], cvx, cvy);
   sim.place(es, escort.x, escort.y, escort.vx, escort.vy);
   const goalC = { x: spot[0] * TILE, y: spot[1] * TILE }, Fc = N.field(sim.tiles, spot[0], spot[1]);
   const search = F.makeSearch2(SEARCH);
