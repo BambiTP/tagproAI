@@ -364,14 +364,14 @@ async function loadChase(step){
  if(step!=null)CH.i+=step;
  const q='duels?i='+CH.i+'&pair='+encodeURIComponent($('cPair').value||'')+'&result='+$('cRes').value;
  const d=await (await fetch(q)).json();
- if(!$('cPair').options.length&&d.pairs){$('cPair').innerHTML=d.pairs.map(p=>{const[c,r]=p.split('-');return '<option value="'+p+'"'+(p===d.pair?' selected':'')+'>'+c+' chaser vs '+r+' carrier</option>';}).join('');}
+ if(!$('cPair').options.length&&d.pairs){$('cPair').innerHTML=d.pairs.map(p=>{const[k,c,r]=p.split('-');return '<option value="'+p+'"'+(p===d.pair?' selected':'')+'>'+(k==='team'?'2v2: chasers '+c+' vs carrier '+(r==='block'?'with a blocker':'alone'):c+' chaser vs '+r+' carrier')+'</option>';}).join('');}
  if(!d.count){CH.d=null;$('cInfo').textContent=d.pair?'No duels with that result.':'No duels yet: run chase/duel.js.';return;}
  CH.d=d;CH.i=d.i;CH.t=0;CH.acc=0;CH.endAt=0;
  cv_.setMap(d.tiles,d.tile,d.spot||{x:-99,y:-99},null);
  $('cNum').textContent=(d.i+1)+' of '+d.count;
  const ct=d.chaserTeam,rt=d.carrier.team,m=Math.floor(d.t0/60000),sec=Math.floor(d.t0/1000)%60;
  $('cInfo').innerHTML=d.map+', '+m+':'+String(sec).padStart(2,'0')+' into the game · started '+d.startDist.toFixed(1)+' tiles apart · '+
-  '<b style="color:'+TEAM[ct]+'">bot chaser</b> vs <b style="color:'+TEAM[rt]+'">bot carrier</b>: <b>'+RES[d.bot.result]+'</b> at '+(d.bot.ticks/60).toFixed(2)+' s'+
+  '<b style="color:'+TEAM[ct]+'">bot chaser'+(d.mate?' + teammate ('+d.mate+'\'s start)':'')+'</b> vs <b style="color:'+TEAM[rt]+'">bot carrier'+(d.escort?' + teammate ('+d.escort+'\'s start)':'')+'</b>: <b>'+RES[d.bot.result]+'</b> at '+(d.bot.ticks/60).toFixed(2)+' s'+
   ' · real: '+d.chaser.name+' chasing '+d.carrier.name+', '+REAL[d.real.outcome]+(d.real.ms!=null?' at '+(d.real.ms/1000).toFixed(2)+' s':'');
 }
 $('cPair').onchange=$('cRes').onchange=()=>{CH.i=0;loadChase();};
@@ -391,10 +391,12 @@ function drawChase(){
   if(h)cv_.ball(h[0],h[1],ct,.3,0,CH.t===0?'real '+d.chaser.name:'');
   cv_.ball(gc[k][0],gc[k][1],rt,.3,0,CH.t===0?'real '+d.carrier.name:'');
  }
- const P=d.bot.path,k=Math.min(CH.t,P.length-1);
- cv_.trail(P.map(f=>[f[0],f[1]]),CH.t,ct,.5);cv_.trail(P.map(f=>[f[2],f[3]]),CH.t,rt,.5);
- cv_.ball(P[k][0],P[k][1],ct,1,0,'chaser');cv_.ball(P[k][2],P[k][3],rt,1,0,'carrier');
- const g=cv_.g,X=cv_.P(P[k][2]),Y=cv_.P(P[k][3]);g.fillStyle='#fff';g.font='bold '+Math.max(11,cv_.px/2)+'px sans-serif';g.fillText('⚑',X-cv_.px*.25,Y+cv_.px*.2);
+ // paths: one against one [cx,cy,rx,ry] per tick; two against two [[chaser],[teammate],[carrier],[teammate]] (null once popped)
+ const P=d.bot.team?d.bot.path:d.bot.path.map(f=>[[f[0],f[1]],null,[f[2],f[3]],null]),k=Math.min(CH.t,P.length-1);
+ const who=[['chaser',ct],[d.mate?'teammate':'',ct],['carrier',rt],[d.escort?'teammate':'',rt]];
+ for(let j=0;j<4;j++){const tr=P.map(f=>f[j]).filter(Boolean);if(!tr.length)continue;cv_.trail(tr,CH.t,who[j][1],.5);
+  const f=P[k][j];if(f)cv_.ball(f[0],f[1],who[j][1],1,0,who[j][0]);}
+ const g=cv_.g,X=cv_.P(P[k][2][0]),Y=cv_.P(P[k][2][1]);g.fillStyle='#fff';g.font='bold '+Math.max(11,cv_.px/2)+'px sans-serif';g.fillText('⚑',X-cv_.px*.25,Y+cv_.px*.2);
  $('cTime').textContent=(CH.t/60).toFixed(2)+' s';
 }
 

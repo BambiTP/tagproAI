@@ -306,10 +306,11 @@ function duelRows(f) {
   return duelCache[f].rows;
 }
 function duelView(q) {
-  const pairs = fs.existsSync(DUELS) ? fs.readdirSync(DUELS).filter((f) => /^duel-[a-z]+-[a-z]+\.jsonl$/.test(f)).map((f) => f.slice(5, -6)).sort() : [];
-  const pair = pairs.includes(q.get('pair')) ? q.get('pair') : pairs.find((p) => p === 'intercept-escape') || pairs[0];
+  // one against one (duel-<chaser>-<carrier>, chase/duel.js) and two against two (team-<chasing>-<carrying>, chase/team.js)
+  const pairs = fs.existsSync(DUELS) ? fs.readdirSync(DUELS).filter((f) => /^(duel|team)-[a-z]+-[a-z]+\.jsonl$/.test(f)).map((f) => f.slice(0, -6)).sort() : [];
+  const pair = pairs.includes(q.get('pair')) ? q.get('pair') : pairs.find((p) => p === 'duel-intercept-escape') || pairs[0];
   if (!pair) return { pairs };
-  const want = q.get('result') || 'all', all = duelRows('duel-' + pair + '.jsonl');
+  const want = q.get('result') || 'all', all = duelRows(pair + '.jsonl');
   const rows = all.filter((r) => want === 'all' || r.result === want || (want === 'disagree' && (r.result === 'returned') !== (r.real === 'returned')));
   if (!rows.length) return { pairs, pair, count: 0 };
   const i = ((parseInt(q.get('i'), 10) || 0) % rows.length + rows.length) % rows.length, r = rows[i];
@@ -319,7 +320,9 @@ function duelView(q) {
   const counts = {}; for (const x of all) counts[x.result] = (counts[x.result] || 0) + 1;
   return { pairs, pair, i, count: rows.length, total: all.length, counts, id: r.id, map: s.map, t0: s.t0, tiles: s.tiles, tile: N.TILE, spot,
     chaser: s.chaser, carrier: s.carrier, chaserTeam: s.chaserTeam, startDist: s.startDist,
-    bot: { result: r.result, ticks: r.ticks, path: r.path }, real: { outcome: s.outcome, ms: s.realMs, chaser: s.human, carrier: s.ghost } };
+    // two against two: the teammates' names (paths are [chaser, chaser's teammate, carrier, carrier's teammate])
+    mate: r.mate != null ? (s.others.find((o) => o.id === r.mate) || {}).name : null, escort: r.escort != null ? (s.others.find((o) => o.id === r.escort) || {}).name : null,
+    bot: { result: r.result, ticks: r.ticks, path: r.path, team: pair.startsWith('team-') }, real: { outcome: s.outcome, ms: s.realMs, chaser: s.human, carrier: s.ghost } };
 }
 
 // ---------- http ----------
