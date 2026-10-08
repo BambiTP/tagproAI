@@ -298,6 +298,30 @@ function learning() {
     you: Object.fromEntries(Object.entries(human.best).map(([s, b]) => [s, b.ticks])), test };
 }
 
+// ---------- chase duels (chase/duel.js): one duel with the real players' paths from the same start ----------
+const DUELS = path.join(__dirname, 'chase', 'results'), duelCache = {};
+function duelRows(f) {
+  const file = path.join(DUELS, f), m = fs.statSync(file).mtimeMs;
+  if (!duelCache[f] || duelCache[f].m !== m) duelCache[f] = { m, rows: fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) };
+  return duelCache[f].rows;
+}
+function duelView(q) {
+  const pairs = fs.existsSync(DUELS) ? fs.readdirSync(DUELS).filter((f) => /^duel-[a-z]+-[a-z]+\.jsonl$/.test(f)).map((f) => f.slice(5, -6)).sort() : [];
+  const pair = pairs.includes(q.get('pair')) ? q.get('pair') : pairs.find((p) => p === 'intercept-escape') || pairs[0];
+  if (!pair) return { pairs };
+  const want = q.get('result') || 'all', all = duelRows('duel-' + pair + '.jsonl');
+  const rows = all.filter((r) => want === 'all' || r.result === want || (want === 'disagree' && (r.result === 'returned') !== (r.real === 'returned')));
+  if (!rows.length) return { pairs, pair, count: 0 };
+  const i = ((parseInt(q.get('i'), 10) || 0) % rows.length + rows.length) % rows.length, r = rows[i];
+  const s = JSON.parse(fs.readFileSync(path.join(__dirname, 'chase', 'scenarios', r.id + '.json'), 'utf8'));
+  let spot = null;
+  for (let x = 0; x < s.tiles.length && !spot; x++) for (let y = 0; y < s.tiles[0].length; y++) if (Math.floor(parseFloat(s.tiles[x][y])) === (s.carrier.team === 1 ? 3 : 4)) { spot = { x: x * N.TILE, y: y * N.TILE }; break; }
+  const counts = {}; for (const x of all) counts[x.result] = (counts[x.result] || 0) + 1;
+  return { pairs, pair, i, count: rows.length, total: all.length, counts, id: r.id, map: s.map, t0: s.t0, tiles: s.tiles, tile: N.TILE, spot,
+    chaser: s.chaser, carrier: s.carrier, chaserTeam: s.chaserTeam, startDist: s.startDist,
+    bot: { result: r.result, ticks: r.ticks, path: r.path }, real: { outcome: s.outcome, ms: s.realMs, chaser: s.human, carrier: s.ghost } };
+}
+
 // ---------- http ----------
 const send = (res, code, body, type = 'application/json') => {
   res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' });
@@ -366,6 +390,7 @@ http.createServer((req, res) => {
       return send(res, 200, { ...r, seed: s, tiles: getMap(t.key).tiles, tile: N.TILE, goal: t.goal, start: t.start,
         you: human.best[s] || null, fast: x.fast || null, net: x.net || null, guided: x.guided || null, puzzleMode: modeOf(s) });
     }
+    if (u.pathname === '/duels') return send(res, 200, duelView(u.searchParams));
     if (u.pathname === '/stats') return send(res, 200, stats());
     if (u.pathname === '/learning') return send(res, 200, learning());
     if (u.pathname === '/submit' && req.method === 'POST') {

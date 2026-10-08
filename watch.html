@@ -28,7 +28,7 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 <script src="engine/box2d.js"></script><script src="engine/constants.js"></script><script src="engine/game.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head><body>
-<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
+<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chases">Chases</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
 
 <div id="play" class="tab on">
  <div class="hud">
@@ -56,6 +56,19 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
  <div class="hud" style="padding-top:0"><span id="wInfo"></span>
  </div>
  <canvas id="wc" class="map"></canvas>
+</div>
+
+<div id="chases" class="tab">
+ <div class="hud">
+  <span>Chase <b id="cNum" class="big">–</b></span><span class="big" id="cTime">0.00 s</span>
+  <select id="cPair"></select>
+  <select id="cRes"><option value="all">Every result</option><option value="returned">Bot chaser returned it</option><option value="capped">Bot carrier capped</option><option value="disagree">Bot and real chaser differ</option></select>
+  <select id="cSpeed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+  <button class="btn2" id="cPrev">◀ Back</button><button class="btn2" id="cNext">Next ▶</button>
+  <label><input type="checkbox" id="cReal" checked> real players</label>
+ </div>
+ <div class="hud" style="padding-top:0"><span id="cInfo"></span></div>
+ <canvas id="cc" class="map"></canvas>
 </div>
 
 <div id="graphs-tab" class="tab">
@@ -176,7 +189,7 @@ let tab='play';
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
  tab=b.dataset.t;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));$(tab==='graphs'?'graphs-tab':tab).classList.add('on');
- if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
+ if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
 });
 
 // ---------- play ----------
@@ -339,6 +352,52 @@ function drawWatch(){
  $('wTime').textContent=(W.t/60).toFixed(2)+' s';
 }
 
+
+// ---------- chases: one-against-one duels from chase/duel.js ----------
+// Bright balls are the bots (chaser and carrier, both played by the search); faint ones are the real players
+// from the replay, starting from the same moment. The green cross is the carrier's own flag (where it caps).
+const cv_=new View($('cc')),CH={d:null,i:0,t:0,acc:0,endAt:0};
+const TEAM=['','#ff4a4a','#4a9bff'],TEAMN=['','red','blue'];
+const RES={returned:'returned the flag','capped':'capped','held':'still held after 8 s','chaser popped':'chaser popped on a spike'};
+const REAL={returned:'returned it','cap':'the carrier capped','still held':'the carrier still held it','returned by someone else':'a teammate returned it first'};
+async function loadChase(step){
+ if(step!=null)CH.i+=step;
+ const q='duels?i='+CH.i+'&pair='+encodeURIComponent($('cPair').value||'')+'&result='+$('cRes').value;
+ const d=await (await fetch(q)).json();
+ if(!$('cPair').options.length&&d.pairs){$('cPair').innerHTML=d.pairs.map(p=>{const[c,r]=p.split('-');return '<option value="'+p+'"'+(p===d.pair?' selected':'')+'>'+c+' chaser vs '+r+' carrier</option>';}).join('');}
+ if(!d.count){CH.d=null;$('cInfo').textContent=d.pair?'No duels with that result.':'No duels yet: run chase/duel.js.';return;}
+ CH.d=d;CH.i=d.i;CH.t=0;CH.acc=0;CH.endAt=0;
+ cv_.setMap(d.tiles,d.tile,d.spot||{x:-99,y:-99},null);
+ $('cNum').textContent=(d.i+1)+' of '+d.count;
+ const ct=d.chaserTeam,rt=d.carrier.team,m=Math.floor(d.t0/60000),sec=Math.floor(d.t0/1000)%60;
+ $('cInfo').innerHTML=d.map+', '+m+':'+String(sec).padStart(2,'0')+' into the game · started '+d.startDist.toFixed(1)+' tiles apart · '+
+  '<b style="color:'+TEAM[ct]+'">bot chaser</b> vs <b style="color:'+TEAM[rt]+'">bot carrier</b>: <b>'+RES[d.bot.result]+'</b> at '+(d.bot.ticks/60).toFixed(2)+' s'+
+  ' · real: '+d.chaser.name+' chasing '+d.carrier.name+', '+REAL[d.real.outcome]+(d.real.ms!=null?' at '+(d.real.ms/1000).toFixed(2)+' s':'');
+}
+$('cPair').onchange=$('cRes').onchange=()=>{CH.i=0;loadChase();};
+$('cPrev').onclick=()=>loadChase(-1);$('cNext').onclick=()=>loadChase(1);
+function stepChase(dt){
+ if(!CH.d)return;const d=CH.d,len=Math.max(d.bot.path.length,$('cReal').checked?d.real.carrier.length:0);
+ if(CH.t<len-1){CH.acc+=dt*60*$('cSpeed').value;while(CH.acc>=1&&CH.t<len-1){CH.acc--;CH.t++;}}
+ else if(!CH.endAt)CH.endAt=performance.now()+2500;
+ else if(performance.now()>CH.endAt){CH.endAt=Infinity;loadChase(1);}
+}
+function drawChase(){
+ if(!CH.d)return;const d=CH.d,ct=TEAM[d.chaserTeam],rt=TEAM[d.carrier.team];cv_.base();
+ if($('cReal').checked){
+  const hc=d.real.chaser.filter(Boolean),gc=d.real.carrier;
+  cv_.trail(hc,CH.t,ct,.2);cv_.trail(gc,CH.t,rt,.2);
+  const k=Math.min(CH.t,gc.length-1),h=d.real.chaser[Math.min(CH.t,d.real.chaser.length-1)];
+  if(h)cv_.ball(h[0],h[1],ct,.3,0,CH.t===0?'real '+d.chaser.name:'');
+  cv_.ball(gc[k][0],gc[k][1],rt,.3,0,CH.t===0?'real '+d.carrier.name:'');
+ }
+ const P=d.bot.path,k=Math.min(CH.t,P.length-1);
+ cv_.trail(P.map(f=>[f[0],f[1]]),CH.t,ct,.5);cv_.trail(P.map(f=>[f[2],f[3]]),CH.t,rt,.5);
+ cv_.ball(P[k][0],P[k][1],ct,1,0,'chaser');cv_.ball(P[k][2],P[k][3],rt,1,0,'carrier');
+ const g=cv_.g,X=cv_.P(P[k][2]),Y=cv_.P(P[k][3]);g.fillStyle='#fff';g.font='bold '+Math.max(11,cv_.px/2)+'px sans-serif';g.fillText('⚑',X-cv_.px*.25,Y+cv_.px*.2);
+ $('cTime').textContent=(CH.t/60).toFixed(2)+' s';
+}
+
 // ---------- graphs ----------
 const charts={};
 if(typeof Chart!=='undefined'){Chart.defaults.color='#aaa';Chart.defaults.borderColor='#2c2c2c';}
@@ -468,7 +527,8 @@ let last=performance.now();
 function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
  if(tab==='play'){stepPlay(dt);drawPlay();}else $('count').style.display='none';
  if(tab==='watch'){stepWatch(dt);drawWatch();}
+ if(tab==='chases'){stepChase(dt);drawChase();}
  requestAnimationFrame(frame);}
-addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();});
+addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();if(CH.d)cv_.layout();});
 pickers();newPuzzle();requestAnimationFrame(frame);
 </script></body></html>
