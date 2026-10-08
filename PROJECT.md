@@ -118,6 +118,18 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   is reliable; best-of-several is a good teacher.
 - **Decision (stopping rule met after run 6): stop working on pure movement.**
 
+### Chasing (started 2026-10-08, `chase/`)
+- `chase/extract.js` turns ranked replays into chase puzzles: a real chaser 2-10 tiles from the enemy carrier, the
+  carrier's recorded path, and what really happened (`chase/scenarios/`, git-ignored; 3,977 from the first 20 games).
+- `chase/run.js` ghost test: the carrier replays its recorded path. Lead (aim where the carrier will be) 46%
+  returned, pursue 40%, real players 21% (unfair both ways: the recorded carrier dodged the human, not the bot).
+  Replay positions are blurred around fast moves (real returns show 0.38-0.7 m apart), so runs also record 0.5 m.
+- `chase/duel.js` duels: both balls in the engine, both played by the search (search hooks `doneAt`, `lost`,
+  `extra` in fastsearch.js). Chasers: pursue, lead, intercept (first point on the carrier's route home it reaches
+  first, else the flag), mixed. Carriers: run, escape (keeps away), wide. On 209 puzzles: intercept/mixed return
+  about half the carriers, pursue 28%; escape carriers cap a bit more than run (55% vs 49%).
+- Results in `chase/results/` (`summary.txt`, `duel-summary.txt`).
+
 ---
 
 ## 6. Files
