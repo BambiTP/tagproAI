@@ -8,6 +8,8 @@
 // Carrying plans (the carrier always escapes: home, keeping away from both chasers):
 //   alone   the teammate also heads for the carrier's flag (no blocking on purpose)
 //   block   the teammate stays between the carrier and the nearer chaser, about a tile from the carrier
+//   bump    the teammate goes at the chaser nearest the carrier, aiming where that chaser will be (like a chase
+//           of its own), and touching it counts as done: the collision knocks it off its line
 // Each ball plans every 4 ticks and carries out 2 moves per plan; while one plans, the others keep their keys.
 // Ends: a chaser touches the carrier or it pops (returned), the carrier reaches its flag (capped; flag assumed
 // home), 8 s (held). A popped chaser or teammate just stays out.
@@ -19,7 +21,7 @@ const C = require('./run');
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block'];
+const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 const SEARCH = { prune: true, adaptive: false, width: +(process.env.TEAM_W || 10), depth: +(process.env.TEAM_D || 6) };
@@ -68,6 +70,14 @@ function game(s, planA, planB) {
   // the escort: between the carrier and the nearer chaser, a tile from the carrier; or just towards the flag
   const escortTask = () => {
     if (planB === 'alone') return ballTask(goalC.x, goalC.y, { doneAt: () => false });
+    if (planB === 'bump') {
+      const r = pos(ca), live = chasers.filter(alive);
+      if (!live.length) return ballTask(goalC.x, goalC.y, { doneAt: () => false });
+      const c = live.reduce((a, b) => (Math.hypot(pos(a).x - r.x, pos(a).y - r.y) <= Math.hypot(pos(b).x - r.x, pos(b).y - r.y) ? a : b));
+      const q = pos(es), w = vel(es), cp = pos(c), cv = vel(c);
+      const [gx, gy] = C.leadPoint(Fc, { x: q.x, y: q.y, vx: w.x, vy: w.y }, [cp.x, cp.y], [cv.x, cv.y]);
+      return ballTask(gx, gy, { doneAt: (x, y) => { const b = pos(c); return Math.hypot(x - b.x, y - b.y) < TOUCH; } });
+    }
     const r = pos(ca), c = nearest(chasers.filter(alive).map((p) => ({ x: pos(p).x, y: pos(p).y })), r.x, r.y) || goalC;
     const dx = c.x - r.x, dy = c.y - r.y, L = Math.hypot(dx, dy) || 1, k = Math.min(L * 0.6, 1.2);
     let gx = r.x + dx / L * k, gy = r.y + dy / L * k;
