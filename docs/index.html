@@ -516,6 +516,35 @@ const LDEF={carrying:'Holding the enemy flag.',regrab:'Waiting on the empty enem
  OD:'Your flag is out: guarding the enemy flag spot so their carrier can\'t come home and cap, instead of chasing.',escort:'Helping your own carrier: blocking chasers or clearing a route.',
  'home defence':'Your flag is home: defending in your base.','grab attempt':'In the enemy base trying to grab, or waiting for a chance.',
  'pup fight':'Fighting over a powerup that just spawned or is about to.',moving:'Getting somewhere: back to position, to the other base, and so on.'};
+// real TagPro textures for the clips, loaded from the tagpro-local server (not copied into this repo).
+// Cells in the 40px tiles.png grid, from the official client's tile table; boosts and portals have their own
+// 5-frame sheets (frame 0 live, frame 4 used). Walls are drawn plain (the client's joined-wall system isn't copied).
+const TEX_BASE='https://152-44-39-10.sslip.io/textures/classic/',TEX={};let texReady=0;
+for(const k of ['tiles','speedpad','speedpadred','speedpadblue','portal','portalred','portalblue','gravitywell']){const im=new Image();
+ im.onload=()=>{if(++texReady===8&&LB.clip)useTextures();};im.src=TEX_BASE+k+'.png';TEX[k]=im;}
+const CELL={2:[13,4],3:[14,1],3.1:[14,2],4:[15,1],4.1:[15,2],16:[13,1],16.1:[13,2],6:[12,8],6.1:[12,4],6.2:[12,5],6.3:[12,6],6.4:[12,7],7:[12,0],8:[13,6],
+ 9:[12,3],9.1:[13,3],9.2:[14,3],9.3:[15,3],10:[12,1],10.1:[12,2],11:[14,4],12:[15,4],17:[14,5],18:[15,5],23:[13,5]};
+const SHEET={5:['speedpad',0],5.1:['speedpad',4],14:['speedpadred',0],14.1:['speedpadred',4],15:['speedpadblue',0],15.1:['speedpadblue',4],
+ 13:['portal',0],13.1:['portal',4],24:['portalred',0],24.1:['portalred',4],25:['portalblue',0],25.1:['portalblue',4]};
+function texBackground(tiles,s){
+ const W=tiles.length,H=tiles[0].length,c=document.createElement('canvas');c.width=W*s;c.height=H*s;const g=c.getContext('2d');
+ const cell=(cx,cy,X,Y,im=TEX.tiles)=>g.drawImage(im,cx*40,cy*40,40,40,X,Y,s,s);
+ for(let x=0;x<W;x++)for(let y=0;y<H;y++){
+  const raw=parseFloat(tiles[x][y]),v=Math.round(raw*10)/10,X=x*s,Y=y*s;if(raw===0||isNaN(raw))continue;
+  if(Math.floor(v)===1){ // walls: plain, bevelled
+   if(v!==1)cell(13,4,X,Y);g.fillStyle='#7e7e7e';g.beginPath();
+   if(v===1)g.rect(X,Y,s,s);else if(v===1.1){g.moveTo(X,Y);g.lineTo(X,Y+s);g.lineTo(X+s,Y+s);}else if(v===1.2){g.moveTo(X,Y);g.lineTo(X+s,Y);g.lineTo(X,Y+s);}
+   else if(v===1.3){g.moveTo(X,Y);g.lineTo(X+s,Y);g.lineTo(X+s,Y+s);}else{g.moveTo(X+s,Y);g.lineTo(X+s,Y+s);g.lineTo(X,Y+s);}g.fill();
+   if(v===1){g.fillStyle='#9a9a9a';g.fillRect(X,Y,s,Math.max(1,s/10));g.fillStyle='#626262';g.fillRect(X,Y+s-Math.max(1,s/10),s,Math.max(1,s/10));}
+   continue;}
+  cell(13,4,X,Y); // floor under everything else
+  if(v===22){g.drawImage(TEX.gravitywell,0,0,40,40,X,Y,s,s);continue;}
+  const sh=SHEET[v]||SHEET[Math.floor(v)];if(sh){g.drawImage(TEX[sh[0]],sh[1]*40,0,40,40,X,Y,s,s);continue;}
+  const ce=CELL[v]||CELL[Math.floor(v*10)/10]||CELL[Math.floor(v)];if(ce&&v!==2)cell(ce[0],ce[1],X,Y);
+ }
+ return c;
+}
+function useTextures(){try{lv.bg=texBackground(LB.clip.tiles,lv.px);lv.textured=true;}catch(e){lv.textured=false;}}
 const lv=new View($('lc'));const LB={clip:null,t:0,acc:0,pause:0,phase:0};
 $('ldefs').innerHTML=Object.entries(LDEF).map(([k,v])=>'<div><b style="color:#fff">'+k+'</b>: '+v+'</div>').join('');
 async function nextClip(){
@@ -524,7 +553,7 @@ async function nextClip(){
  $('lmine').textContent='You\'ve labelled '+num(d.mine)+' so far.';
  if(d.done){$('lguess').textContent='You\'ve labelled every clip we have. Thank you! More will come.';LB.clip=null;return;}
  const c=d.clip;LB.clip=c;LB.t=0;LB.acc=0;LB.pause=0;LB.phase=0;
- lv.setMap(c.tiles,1,{x:-99,y:-99},{x:0,y:0});
+ lv.setMap(c.tiles,1,{x:-99,y:-99},{x:0,y:0});lv.textured=false;if(texReady===8)useTextures();
  const who=c.players.find(p=>p.id===c.target)||{};
  $('lwho').innerHTML='<span style="color:'+(who.team===1?'#ff6b6b':'#6bb5ff')+'">'+escH(who.name||'player')+'</span> <span class=dim>('+(who.team===1?'red':'blue')+') · '+escH(c.map)+'</span>';
  $('lmark').style.left=(100*c.at/(c.frames.length-1))+'%';
@@ -551,9 +580,13 @@ function drawLabel(){
  const c=LB.clip;if(!c)return;const g=lv.g,px=lv.px,P=v=>(v+.5)*px;g.drawImage(lv.bg,0,0);
  const i=Math.min(LB.t,c.frames.length-1),f=c.frames[i],nx=c.frames[Math.min(i+1,c.frames.length-1)],k=LB.pause>0?0:LB.acc;
  c.players.forEach((p,j)=>{const a=f[j];if(!a)return;const b=nx[j]||a,x=a[0]+(b[0]-a[0])*k,y=a[1]+(b[1]-a[1])*k,r=px*.47;
-  g.globalAlpha=a[3]?.25:1;g.fillStyle=p.team===1?'#e04848':'#4a86e0';circ(g,P(x),P(y),r);
+  if(a[3]&&lv.textured)return; // popped players aren't on screen in the real game
+  g.globalAlpha=a[3]?.25:1;
+  if(lv.textured){g.drawImage(TEX.tiles,(p.team===1?14:15)*40,0,40,40,P(x)-px/2,P(y)-px/2,px,px);
+   if(a[2]){const fc=a[2]===1?[14,1]:a[2]===2?[15,1]:[13,1];g.drawImage(TEX.tiles,fc[0]*40,fc[1]*40,40,40,P(x)-px*.05,P(y)-px*1.05,px,px);}}
+  else{g.fillStyle=p.team===1?'#e04848':'#4a86e0';circ(g,P(x),P(y),r);
   if(a[2]){g.lineWidth=Math.max(2,px/8);g.strokeStyle=a[2]===1?'#ff9a9a':a[2]===2?'#9ac4ff':'#ffe066';g.beginPath();g.arc(P(x),P(y),r*1.25,0,7);g.stroke();
-   g.fillStyle=a[2]===1?'#d33':'#36d';g.fillRect(P(x)-r*.3,P(y)-r*1.9,r*.8,r*.5);}
+   g.fillStyle=a[2]===1?'#d33':'#36d';g.fillRect(P(x)-r*.3,P(y)-r*1.9,r*.8,r*.5);}}
   if(p.id===c.target){g.lineWidth=Math.max(3,px/6);g.strokeStyle='#fff';g.beginPath();g.arc(P(x),P(y),r*1.55,0,7);g.stroke();}
   g.fillStyle=p.id===c.target?'#fff':'#bbb';g.font=(p.id===c.target?'bold ':'')+Math.max(10,px/2.8)+'px sans-serif';g.fillText(p.name.slice(0,14),P(x)+r+2,P(y)-r);
   g.globalAlpha=1;});
