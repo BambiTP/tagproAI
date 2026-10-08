@@ -9,6 +9,8 @@
 //  - est: a different time-left estimate, est(task, x, y, vx, vy) in ticks (e.g. a trained network)
 //  - boosts: estimate with the route field that treats live boosts as shortcuts (nav.boostField); true or
 //    { setup, keep } settings
+// A task can also carry hooks for games with other balls (chase/duel.js): doneAt(x, y) replaces the goal test,
+// lost() ends a line like a pop (e.g. the carrier got touched), extra(x, y) adds ticks to a line's estimate.
 const { isMainThread, parentPort, Worker, workerData } = require('worker_threads');
 const N = require('./nav');
 const { Sim, getMap, setKeys } = require('./sim');
@@ -44,7 +46,7 @@ function makeSearch2({ width = 16, depth = 8, calmWidth = 8, calmDepth = 4, adap
   return function search(task, sim, p, firsts = ALL) {
     const deadline = performance.now() + budgetMs;
     let out = false;
-    const done_ = N.goalCheck(task), hand = task.touch ? N.heuristicTouch : N.heuristic;
+    const done_ = task.doneAt ? (g_, x, y) => task.doneAt(x, y) : N.goalCheck(task), hand = task.touch ? N.heuristicTouch : N.heuristic;
     const FB = boosts && task.touch ? N.boostField(task, sim.tiles, 1, boosts === true ? undefined : boosts) : null;
     const est = estOverride ? (F_, g_, x, y, vx, vy) => estOverride(task, x, y, vx, vy)
       : FB ? (F_, g, x, y, vx, vy) => N.heuristicTouch(FB, g, x, y, vx, vy) : hand;
@@ -62,18 +64,18 @@ function makeSearch2({ width = 16, depth = 8, calmWidth = 8, calmDepth = 4, adap
         for (const a of acts) {
           sim.restore(n.s);
           setKeys(p, a);
-          let done = false, t = 0;
+          let done = false, lost = false, t = 0;
           for (; t < N.K; t++) {
             sim.tickOnce();
-            if (p.dead) break;
+            if (p.dead || (task.lost && task.lost())) { lost = true; break; }
             const q = p.body.GetPosition(), v = p.body.GetLinearVelocity();
             if (done_(task.goal, q.x, q.y, v.x, v.y)) { done = true; t++; break; }
           }
-          if (p.dead) continue;
+          if (lost) continue;
           const g = n.g + t, line = n.line.concat(a);
           if (done) { if (!bestDone || g < bestDone.g) bestDone = { g, line }; continue; }
           const q = p.body.GetPosition(), v = p.body.GetLinearVelocity();
-          const f = g + est(task.F, task.goal, q.x, q.y, v.x, v.y);
+          const f = g + est(task.F, task.goal, q.x, q.y, v.x, v.y) + (task.extra ? task.extra(q.x, q.y) : 0);
           if (bestDone && f >= bestDone.g) continue;
           const cell = Math.round(q.x / 0.04) + ',' + Math.round(q.y / 0.04) + ',' + Math.round(v.x / 0.1) + ',' + Math.round(v.y / 0.1);
           const st = sim.save();

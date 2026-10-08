@@ -133,4 +133,4 @@ if (require.main === module) {
     if (process.env.VERBOSE) console.log(id, r.result, r.ticks, 'real:', r.real, r.realTicks, r.ms + 'ms');
   }
 }
-module.exports = { play, VERSIONS, aimPoint, routeHome };
+module.exports = { play, VERSIONS, aimPoint, routeHome, leadPoint, capSpot, COPY, kind };
