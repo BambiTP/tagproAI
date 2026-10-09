@@ -164,7 +164,9 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   hypotheses): every plan simulate 12 candidate moves 1.5 s ahead with everyone on simple steering, pick the best for
   the carrier. Round 15, fresh puzzles: 67.0% vs 71.7% returned, saved 21 / cost 6, per puzzle -4.8 (se 1.8): the best
   blocker. `chase/compare.js f <plans>` compares plans on the fresh set. Round 16: rollout choice for the chaser's
-  teammate (`team.js rollout alone`).
+  teammate (`team.js rollout alone`) was WORSE for the chasers (68.3% vs 71.7% returned, -3.5, se 1.7): the rollout's
+  chaser model (straight at the carrier, parks at its cut-off point) is too crude. Fix: lead the carrier in rollouts.
+  Round 17: rollout2 (carrier also picks by rollout).
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
