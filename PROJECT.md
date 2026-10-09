@@ -174,7 +174,8 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   carrier's velocity) against a plain and a rollout2 carrier: lead chasers equal route chasers vs a plain carrier
   (70.8% vs 71.7%); vs rollout2 51.7% returned (vs 70.8%, -19.0, se 4.5; saved 85 / cost 25). The carrier's
   rollout gain is real but mostly (50 -> 19 points) came from fooling route-predicting chasers. Chasers are now the
-  weak side.
+  weak side. Round 20: split chasers (one route, one lead) vs rollout2 42.5% returned, worse than two lead chasers
+  (51.7%; -9.2, se 3.6). Best so far: carrier side rollout2, chasing side lead.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
