@@ -33,6 +33,9 @@ const tileOf = (v) => Math.round(v / TILE);
 // REACT=1: inside each ball's lookahead the other three steer by simple rules (chasers straight at the carrier, the
 // carrier along its route home, its teammate at its marking spot) instead of keeping their keys
 const REACT = !!+(process.env.REACT || 0);
+// DELAY=<ticks>: every ball's keys take effect that many ticks after it decides them (human reaction time is about
+// 12 ticks, 200 ms); a ball's first decision fills the gap at the start
+const DELAY = +(process.env.DELAY || 0);
 const SEARCH = { prune: true, adaptive: false, width: +(process.env.TEAM_W || 10), depth: +(process.env.TEAM_D || 6) };
 
 function nearest(list, x, y) { let b = null, bd = Infinity; for (const o of list) { const d = Math.hypot(o.x - x, o.y - y); if (d < bd) { bd = d; b = o; } } return b; }
@@ -132,7 +135,7 @@ function game(s, planA, planB) {
     if (es !== me && alive(es)) { if (planB === 'alone') steer(es, goalC.x, goalC.y, Fc); else { const [x, y] = markSpot(); steer(es, x, y, null); } }
   };
   const withReact = (task) => (REACT ? { ...task, react } : task);
-  const plans = new Map(), keys = new Map();
+  const plans = new Map(), keys = new Map(), lag = new Map();
   const roles = [[ch, () => intercept(ch)], [m2, () => (planA === 'guard' ? guard() : intercept(m2))], [ca, () => carrierTask], [es, escortTask]];
   let ms = 0;
   const trace = [];
@@ -145,7 +148,10 @@ function game(s, planA, planB) {
         if (p.dead) { keys.set(p, 0); continue; }
         let pl = plans.get(p) || [];
         if (!pl.length) pl = search(withReact(task()), sim, p).line.slice(0, 2);
-        keys.set(p, pl.shift()); plans.set(p, pl);
+        const k = pl.shift(); plans.set(p, pl);
+        if (!DELAY) keys.set(p, k);
+        else { // a queue of decisions, one per 4 ticks, applied DELAY ticks late
+          const q = lag.get(p) || Array(Math.ceil(DELAY / N.K)).fill(k); q.push(k); keys.set(p, q.shift()); lag.set(p, q); }
       }
       ms += performance.now() - t0;
     }

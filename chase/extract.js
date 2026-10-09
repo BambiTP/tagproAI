@@ -125,4 +125,4 @@ if (require.main === module) {
   }
   console.log(n, 'puzzles from', files.length, 'games');
 }
-module.exports = { scenarios };
+module.exports = { scenarios, load, tracks, at };
