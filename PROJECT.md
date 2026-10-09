@@ -175,7 +175,9 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   (70.8% vs 71.7%); vs rollout2 51.7% returned (vs 70.8%, -19.0, se 4.5; saved 85 / cost 25). The carrier's
   rollout gain is real but mostly (50 -> 19 points) came from fooling route-predicting chasers. Chasers are now the
   weak side. Round 20: split chasers (one route, one lead) vs rollout2 42.5% returned, worse than two lead chasers
-  (51.7%; -9.2, se 3.6). Best so far: carrier side rollout2, chasing side lead.
+  (51.7%; -9.2, se 3.6). Best so far: carrier side rollout2, chasing side lead. Round 21: rlead2 (leader + teammate
+  choosing by simulation with a dodging carrier model) 48.3% vs 51.7%, no gain: stopped simulate-and-pick for chasers
+  after three versions.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
