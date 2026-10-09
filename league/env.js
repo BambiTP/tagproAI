@@ -1,7 +1,8 @@
 // league/env.js - one carrier against two chasers on open floor, for league training (league/league.js).
 // The carrier's goal is a point GOAL_DIST metres away in one of 4 directions (multiples of 90 degrees, so every game can
-// be turned to face the same way without changing the physics). Starts are random: chasers 1.5-6 m from the carrier
-// (one mostly in front of it), every ball moving 0-2.5 m/s in any direction.
+// be turned to face the same way without changing the physics). Starts are random: chasers 1.5-6 m from the carrier,
+// within 135 degrees of the goal direction, every ball moving 0-2.5 m/s in any direction, and neither chaser passed
+// yet (both can reach the goal no later than the carrier): every game starts as a contain the carrier has to break.
 // Results: the carrier ESCAPES (past both chasers: it can reach the goal sooner than either, by GAP seconds) = +1 for the
 // carrier; a chaser touches it (a return) = +1 for the chasers; neither in LIMIT ticks = a draw (0).
 // Each side sees the other side REACT ticks late (no copying keys). Decisions every K ticks.
@@ -42,11 +43,14 @@ class Game {
     this.goal = { x: cx + gx * GOAL_DIST, y: cy + gy * GOAL_DIST };
     const vel = () => { const s = r() * 2.5, a = r() * 2 * Math.PI; return [Math.cos(a) * s, Math.sin(a) * s]; };
     const g0 = Math.atan2(gy, gx);
-    this.sim.place(this.ca, cx, cy, ...vel());
-    this.ch.forEach((p, i) => { // chaser 0 mostly in front (within 90 degrees of the goal direction), chaser 1 anywhere
-      const d = 1.5 + r() * 4.5, a = i === 0 ? g0 + (r() - 0.5) * Math.PI : r() * 2 * Math.PI;
-      this.sim.place(p, cx + Math.cos(a) * d, cy + Math.sin(a) * d, ...vel());
-    });
+    // a real contain to break: draw again until neither chaser is passed yet (both can reach the goal no later than the
+    // carrier), so the carrier always starts behind both
+    for (let tries = 0; ; tries++) {
+      const cv = vel(); this.sim.place(this.ca, cx, cy, ...cv);
+      this.ch.forEach((p) => { const d = 1.5 + r() * 4.5, a = g0 + (r() - 0.5) * 1.5 * Math.PI; this.sim.place(p, cx + Math.cos(a) * d, cy + Math.sin(a) * d, ...vel()); });
+      const tc = timeTo(this.ca.body.GetPosition(), this.ca.body.GetLinearVelocity(), this.goal);
+      if (tries > 200 || this.ch.every((p) => timeTo(p.body.GetPosition(), p.body.GetLinearVelocity(), this.goal) <= tc)) break;
+    }
     this.t = 0; this.hist = []; this.held = [null, null]; this.record(); this.kills = [this.killKey(0), this.killKey(1)];
     return this;
   }
