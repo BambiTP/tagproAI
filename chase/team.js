@@ -8,6 +8,7 @@
 //   rollout the teammate picks, every plan, among 9 targets (intercept, straight at the carrier, the carrier's flag,
 //           points 2/4/6/8/11 tiles ahead on the carrier's route home) by simulating each 1.5 s ahead with everyone on
 //           simple steering: the soonest touch wins, else the carrier furthest from capping and from its flag
+//   lead    both chasers aim where the carrier will be from its actual velocity (not at its route home)
 //   rlead   rollout with a better model inside the simulations: chasers aim where the carrier will be (not where it
 //           is), and a teammate that has reached its spot goes on to the carrier
 // Carrying plans (the carrier always escapes: home, keeping away from both chasers):
@@ -47,7 +48,7 @@ const C = require('./run');
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard', 'rollout', 'rlead'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout', 'rollout2'];
+const PLANS_A = ['both', 'guard', 'rollout', 'rlead', 'lead'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout', 'rollout2'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 // REACT=1: inside each ball's lookahead the other three steer by simple rules (chasers straight at the carrier, the
@@ -88,7 +89,7 @@ function game(s, planA, planB) {
   // a chaser intercepting: finished on touching the carrier
   const intercept = (p) => {
     const q = pos(p), w = vel(p), r = pos(ca), rv = vel(ca);
-    const [gx, gy] = C.aimPoint({ aim: 'route' }, sim.tiles, Fc, spot, { x: q.x, y: q.y, vx: w.x, vy: w.y }, [r.x, r.y], [rv.x, rv.y]);
+    const [gx, gy] = C.aimPoint({ aim: planA === 'lead' ? 'lead' : 'route' }, sim.tiles, Fc, spot, { x: q.x, y: q.y, vx: w.x, vy: w.y }, [r.x, r.y], [rv.x, rv.y]);
     return ballTask(gx, gy, { doneAt: (x, y) => { const b = pos(ca); return Math.hypot(x - b.x, y - b.y) < TOUCH; } });
   };
   // a guard: to a tile in front of the carrier's flag (one tile towards the carrier), touching the carrier also counts
