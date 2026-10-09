@@ -5,7 +5,8 @@
 //   - a PPO update of each network from its own games
 //   - every SNAP generations both networks are saved into the pool (the league) and tested against simple hand-made
 //     players: chasers that lead the carrier, and a carrier that runs at its goal and swerves from chasers within 2 m
-// Rewards: the carrier +1 for escaping (past both chasers), the chasers +1 for a return; the loser -1; a draw 0.
+// Rewards: the carrier +1 for escaping (past both chasers); anything else (a return, or holding the contain to the end)
+// is a win for the chasers (+1 for them, -1 for the carrier). From generation 145 on; before that a draw was 0.
 // Chasers hold to kill (league/env.js): on a certain kill the key is held and the network overruled; those decisions
 // aren't learned from. The hand-made lead chasers hold to kill too.
 //   node league/league.js [generations]   (resumes from league/state/ if it is there)
@@ -39,7 +40,7 @@ function play(g, caPlayer, chPlayer, who) {
     if (who === 'ca') rec.push({ x: vc, ...a }); else if (who === 'ch') rec.push([g.holding(0) ? null : { x: v0, ...b0 }, g.holding(1) ? null : { x: v1, ...b1 }]);
     res = g.step(a.a, [b0.a, b1.a]);
   }
-  const r = res === 'escape' ? 1 : res === 'return' ? -1 : 0; // the carrier's result
+  const r = res === 'escape' ? 1 : -1; // the carrier's result: only an escape wins; a return or a draw goes to the chasers
   return { res, r, rec };
 }
 // advantages (GAE) for one learner's decisions in one game with a reward only at the end
