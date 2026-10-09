@@ -436,6 +436,25 @@ http.createServer((req, res) => {
         you: human.best[s] || null, fast: x.fast || null, net: x.net || null, guided: x.guided || null, puzzleMode: modeOf(s) });
     }
     if (u.pathname === '/duels') return send(res, 200, duelView(u.searchParams));
+    // a picture for Claude (private page only): a plain upload form; the image is saved to runs/uploads/
+    if (u.pathname === '/upload' && req.method === 'GET') return send(res, 200, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Send a picture</title><body style="background:#111;color:#ddd;font:16px system-ui;padding:24px">
+<h2>Send a picture to Claude</h2><p>Pick or drop an image (PNG, JPEG, GIF or WebP, up to 15 MB).</p>
+<input type="file" id="f" accept="image/*"><p id="m"></p>
+<script>f.onchange=async()=>{const x=f.files[0];if(!x)return;m.textContent='Sending…';
+const r=await fetch('upload?name='+encodeURIComponent(x.name),{method:'POST',body:x,headers:{'content-type':x.type}});
+m.textContent=r.ok?'Sent: '+(await r.json()).saved+'. Tell Claude it is there.':'Failed: '+r.status;};</script>`, 'text/html');
+    if (u.pathname === '/upload' && req.method === 'POST') {
+      const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[req.headers['content-type']];
+      if (!ext) { res.writeHead(415); return res.end(); }
+      const chunks = []; let size = 0, big = false;
+      req.on('data', (c) => { size += c.length; if (size > 15e6) { big = true; req.destroy(); } else chunks.push(c); });
+      req.on('end', () => { if (big) return;
+        const dir = path.join(__dirname, 'runs', 'uploads'); fs.mkdirSync(dir, { recursive: true });
+        const name = new Date().toISOString().replace(/[:.]/g, '-') + '.' + ext;
+        fs.writeFileSync(path.join(dir, name), Buffer.concat(chunks)); send(res, 200, { saved: 'runs/uploads/' + name }); });
+      return;
+    }
     if (u.pathname === '/chaseme' && req.method === 'GET') return send(res, 200, chaseMe(parseInt(u.searchParams.get('i'), 10) || 0));
     if (u.pathname === '/chaseme' && req.method === 'POST') {
       let body = '';
