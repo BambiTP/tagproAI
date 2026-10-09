@@ -9,6 +9,8 @@
 //           points 2/4/6/8/11 tiles ahead on the carrier's route home) by simulating each 1.5 s ahead with everyone on
 //           simple steering: the soonest touch wins, else the carrier furthest from capping and from its flag
 //   lead    both chasers aim where the carrier will be from its actual velocity (not at its route home)
+//   rlead2  the puzzle's chaser leads the carrier; its teammate picks like rlead, but the carrier inside the
+//           simulations dodges (steers home blended with away from the nearest chaser within 2 m)
 //   split   one of each: the puzzle's chaser aims at the carrier's route home, its teammate leads the carrier
 //   rlead   rollout with a better model inside the simulations: chasers aim where the carrier will be (not where it
 //           is), and a teammate that has reached its spot goes on to the carrier
@@ -49,7 +51,7 @@ const C = require('./run');
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard', 'rollout', 'rlead', 'lead', 'split'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout', 'rollout2'];
+const PLANS_A = ['both', 'guard', 'rollout', 'rlead', 'lead', 'split', 'rlead2'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout', 'rollout2'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 // REACT=1: inside each ball's lookahead the other three steer by simple rules (chasers straight at the carrier, the
@@ -90,7 +92,7 @@ function game(s, planA, planB) {
   // a chaser intercepting: finished on touching the carrier
   const intercept = (p) => {
     const q = pos(p), w = vel(p), r = pos(ca), rv = vel(ca);
-    const [gx, gy] = C.aimPoint({ aim: planA === 'lead' || (planA === 'split' && p === m2) ? 'lead' : 'route' }, sim.tiles, Fc, spot, { x: q.x, y: q.y, vx: w.x, vy: w.y }, [r.x, r.y], [rv.x, rv.y]);
+    const [gx, gy] = C.aimPoint({ aim: planA === 'lead' || planA === 'rlead2' || (planA === 'split' && p === m2) ? 'lead' : 'route' }, sim.tiles, Fc, spot, { x: q.x, y: q.y, vx: w.x, vy: w.y }, [r.x, r.y], [rv.x, rv.y]);
     return ballTask(gx, gy, { doneAt: (x, y) => { const b = pos(ca); return Math.hypot(x - b.x, y - b.y) < TOUCH; } });
   };
   // a guard: to a tile in front of the carrier's flag (one tile towards the carrier), touching the carrier also counts
@@ -230,8 +232,15 @@ function game(s, planA, planB) {
   // a chaser in a simulation heading for where the carrier will be by the time it gets there
   const leadSteer = (c) => { const q = pos(c), w = vel(c), r = pos(ca), rv = vel(ca);
     const [x, y] = C.leadPoint(Fc, { x: q.x, y: q.y, vx: w.x, vy: w.y }, [r.x, r.y], [rv.x, rv.y]); steer(c, x, y, null); };
+  // the carrier in a chaser's simulation, dodging: home along the route, plus away from the nearest chaser within 2 m
+  const dodgeSteer = () => {
+    const r = pos(ca); let [hx, hy] = N.clearLine(Fc, r.x, r.y, goalC.x, goalC.y) ? [goalC.x - r.x, goalC.y - r.y] : N.pathDir(Fc, r.x, r.y);
+    const hl = Math.hypot(hx, hy) || 1; hx /= hl; hy /= hl;
+    for (const c of chasers) if (alive(c)) { const a = pos(c), d = Math.hypot(r.x - a.x, r.y - a.y); if (d < 2) { const w = (2 - d) / 2; hx += (r.x - a.x) / (d || 1) * w * 1.5; hy += (r.y - a.y) / (d || 1) * w * 1.5; } }
+    steer(ca, r.x + hx, r.y + hy, null);
+  };
   const matePick = () => {
-    const root = sim.save(); let best = 0, bestS = -Infinity, lead = planA === 'rlead';
+    const root = sim.save(); let best = 0, bestS = -Infinity, lead = planA === 'rlead' || planA === 'rlead2', dodge = planA === 'rlead2';
     MATE.forEach((target, i) => {
       sim.restore(root); let score = null, there = false; const d0 = N.fieldAt(Fc, pos(ca).x, pos(ca).y);
       for (let t = 0; t < H && score == null; t++) {
@@ -240,7 +249,8 @@ function game(s, planA, planB) {
         if (alive(m2)) { const [x, y] = target();
           if (lead && !there && Math.hypot(pos(m2).x - x, pos(m2).y - y) < 0.3) there = true;
           if (lead && (there || i < 2)) leadSteer(m2); else steer(m2, x, y, Fc); }
-        if (alive(ca)) steer(ca, goalC.x, goalC.y, Fc);
+        if (alive(ca) && dodge) dodgeSteer();
+        else if (alive(ca)) steer(ca, goalC.x, goalC.y, Fc);
         escortSteer();
         sim.tickOnce();
         if (ca.dead || touching()) score = 1000 - t;
@@ -280,7 +290,7 @@ function game(s, planA, planB) {
     if (!best) return carrierTask;
     return { ...carrierTask, goal: { x: best[0], y: best[1] }, F: N.field(sim.tiles, tileOf(best[0]), tileOf(best[1])) };
   };
-  const roles = [[ch, () => intercept(ch)], [m2, () => (planA === 'guard' ? guard() : (planA === 'rollout' || planA === 'rlead') ? matePick() : intercept(m2))], [ca, () => (planB === 'rollout2' ? carrierPick() : carrierTask)], [es, escortTask]];
+  const roles = [[ch, () => intercept(ch)], [m2, () => (planA === 'guard' ? guard() : (planA === 'rollout' || planA === 'rlead' || planA === 'rlead2') ? matePick() : intercept(m2))], [ca, () => (planB === 'rollout2' ? carrierPick() : carrierTask)], [es, escortTask]];
   let ms = 0;
   const trace = [];
   const done = (result, t) => ({ id: s.id, result, ticks: t, ms: Math.round(ms), mate: mate.id, escort: escort.id, path: trace });
