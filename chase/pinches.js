@@ -5,6 +5,9 @@
 // above and a wall just to the left), and also along both diagonals that run beside those walls (up-right and
 // down-left for that example): a carrier there cannot keep going any of those ways. Beside a slanted (45 degree) wall
 // one of those diagonals is a long free run, so slanted walls do not count. dirs names the two blocked directions.
+// Dead-end lanes: a strip along a wall that ends where a wall juts in across it. A carrier running along the wall gets
+// boxed in, so a chaser only has to hold one line parallel to the wall (depth tiles out from it) back from the jut.
+// lanes: [{ from, to, depth, guard: [a, b] }] (tile coordinates; from -> to runs along the wall into the dead end).
 // For every floor tile, in 4 directions (across, up-down, both diagonals): the chord = the straight run of open floor
 // through it. A chord is a pinch when it is at most MAX_WIDTH tiles long, no longer than the parallel chords one tile to
 // either side, the floor continues on both sides (not a dead end), and 2-4 tiles to one side the parallel chords are
@@ -80,13 +83,41 @@ function cornersOf(tiles) {
   return out;
 }
 
+function lanesOf(tiles, minLen = 3, maxLen = 15, maxDepth = 3) {
+  const W = tiles.length, H = tiles[0].length, open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
+  const out = [];
+  for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
+    if (!open(x, y)) continue;
+    for (const [nx, ny] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { // n: towards the wall being hugged
+      if (open(x + nx, y + ny)) continue;
+      for (const s of [1, -1]) {
+        const fx = -ny * s, fy = nx * s; // forward, along the wall
+        if (open(x + fx, y + fy)) continue; // the end of a lane: a wall straight ahead
+        // how far the jut reaches out from the hugged wall (tiles from the wall, within the lane, blocked ahead)
+        let depth = 1;
+        while (depth < maxDepth && open(x - depth * nx, y - depth * ny) && !open(x - depth * nx + fx, y - depth * ny + fy)) depth++;
+        // back along the wall while it stays unbroken (no way out on the wall side) and the floor continues
+        let len = 0;
+        while (len < maxLen && open(x - (len + 1) * fx, y - (len + 1) * fy) && !open(x - (len + 1) * fx + nx, y - (len + 1) * fy + ny)) len++;
+        if (len < minLen) continue;
+        // there must be open floor beyond the guard line (otherwise it is a corridor, not a lane off open space)
+        const gx = x - depth * nx, gy = y - depth * ny;
+        if (!open(gx, gy)) continue;
+        out.push({ from: [x - len * fx, y - len * fy], to: [x, y], depth,
+          guard: [[gx - nx * 0.5 - len * fx, gy - ny * 0.5 - len * fy], [gx - nx * 0.5, gy - ny * 0.5]] });
+      }
+    }
+  }
+  return out;
+}
+
 if (require.main === module) {
   const out = {};
   for (const key of mapKeys()) {
     const m = getMap(key);
-    out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles), corners: cornersOf(m.tiles) };
-    console.log(out[key].name.padEnd(28), out[key].pinches.length, 'pinches,', out[key].corners.length, 'corner tiles');
+    out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles), corners: cornersOf(m.tiles), lanes: lanesOf(m.tiles) };
+    console.log(out[key].name.padEnd(28), out[key].pinches.length, 'pinches,', out[key].lanes.length, 'dead-end lanes');
   }
   fs.writeFileSync(path.join(__dirname, 'pinches.json'), JSON.stringify(out));
 }
-module.exports = { pinchesOf, cornersOf, blockedTile };
+module.exports = { pinchesOf, cornersOf, lanesOf, blockedTile };
