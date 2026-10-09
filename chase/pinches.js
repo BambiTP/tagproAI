@@ -12,7 +12,6 @@
 // much longer (at least 3 tiles and half as long again). Nearby pinches (middles within 2 tiles) keep the narrowest.
 const fs = require('fs'), path = require('path');
 const { getMap, mapKeys } = require('../sim');
-const N = require('../nav');
 
 const MAX_WIDTH = 8, CORNER = 2;
 const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
@@ -87,7 +86,8 @@ function cornersOf(tiles) {
 // touching the wall (off = 0) or 1-2 tiles out from it (off = 1, 2), as long as the floor between carrier and wall is
 // open, the wall stays flat at that distance, and the bump ahead covers the whole strip between the carrier and the
 // wall (otherwise the carrier slips past along the wall). From the bump back to where the flat wall starts (the wall
-// steps away, or a corner); more than MAX_FLAT tiles without a bump is not a kill point. Straight and 45 degree walls.
+// steps away, or a corner; a one-tile notch in the wall doesn't end it); more than MAX_FLAT tiles without a bump is
+// not a kill point. Straight and 45 degree walls.
 // lanes: [{ from, to, off, fwd }] = the run, into the bump. fwd[team] (1 red, 2 blue): true when running this way takes
 // that team's carrier closer to its own flag along the route (a forward kill point, where it wants to go anyway);
 // false = backward (it would only run in while retreating).
@@ -114,7 +114,9 @@ function lanesOf(tiles) {
             const bx = x - (len + 1) * fx, by = y - (len + 1) * fy;
             let ok = step(x - len * fx, y - len * fy, -fx, -fy);
             for (let k = 1; ok && k <= off; k++) ok = open(bx + k * nx, by + k * ny);
-            if (!ok || open(bx + (off + 1) * nx, by + (off + 1) * ny)) { ended = true; break; }
+            // the wall stepping away ends the flat, except a one-tile notch (one tile deep, then wall again)
+            const notch = open(bx + (off + 1) * nx, by + (off + 1) * ny) && !open(bx + (off + 2) * nx, by + (off + 2) * ny) && !open(bx - fx + (off + 1) * nx, by - fy + (off + 1) * ny);
+            if (!ok || (open(bx + (off + 1) * nx, by + (off + 1) * ny) && !notch)) { ended = true; break; }
             len++; if (len > MAX_FLAT) break;
           }
           if (!ended || len < MIN_FLAT) continue;
@@ -126,16 +128,35 @@ function lanesOf(tiles) {
   return lanes;
 }
 
+// route distance (tiles, 8 directions) from every floor tile to the nearest of the goal tiles
+function distTo(tiles, goals) {
+  const W = tiles.length, H = tiles[0].length, d = tiles.map((c) => c.map(() => Infinity)), q = [];
+  for (const [x, y] of goals) { d[x][y] = 0; q.push([x, y]); }
+  const open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
+  for (let i = 0; i < q.length; i++) { const [x, y] = q[i];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const u = x + dx, v = y + dy; if (!open(u, v) || (dx && dy && (!open(u, y) || !open(x, v)))) continue;
+      const nd = d[x][y] + (dx && dy ? 1.414 : 1); if (nd < d[u][v] - 1e-9) { d[u][v] = nd; q.push([u, v]); } } }
+  return d;
+}
+
 if (require.main === module) {
   const out = {};
   for (const key of mapKeys()) {
     const m = getMap(key);
-    // forward or backward for each team: does the run take that team's carrier closer to its own flag?
-    const flags = {}; for (let x = 0; x < m.tiles.length; x++) for (let y = 0; y < m.tiles[0].length; y++) {
-      const f = Math.floor(parseFloat(m.tiles[x][y])); if (f === 3) flags[1] = [x, y]; if (f === 4) flags[2] = [x, y]; }
-    const F = {}; for (const t of [1, 2]) if (flags[t]) F[t] = N.field(m.tiles, flags[t][0], flags[t][1]);
-    const lanes = lanesOf(m.tiles).map((l) => ({ ...l, fwd: Object.fromEntries([1, 2].map((t) => [t, !!F[t] &&
-      F[t].d[l.to[0] * F[t].H + l.to[1]] < F[t].d[l.from[0] * F[t].H + l.from[1]]])) }));
+    // forward or backward for each team: does the run take that team's carrier closer to where it scores? Its own flag
+    // on capture-the-flag maps; on neutral-flag maps its end zone (red 17, blue 18, as tagpro-local's bots score)
+    const goals = { 1: [], 2: [] };
+    for (let x = 0; x < m.tiles.length; x++) for (let y = 0; y < m.tiles[0].length; y++) {
+      const v = parseFloat(m.tiles[x][y]), f = Math.floor(v);
+      if (f === 3) goals[1].push([x, y]); if (f === 4) goals[2].push([x, y]);
+    }
+    if (!goals[1].length || !goals[2].length) for (let x = 0; x < m.tiles.length; x++) for (let y = 0; y < m.tiles[0].length; y++) {
+      const v = parseFloat(m.tiles[x][y]); if (v === 17) goals[1].push([x, y]); if (v === 18) goals[2].push([x, y]);
+    }
+    const F = {}; for (const t of [1, 2]) if (goals[t].length) F[t] = distTo(m.tiles, goals[t]);
+    const lanes = lanesOf(m.tiles).map((l) => ({ ...l, fwd: F[1] && F[2] ? { 1: F[1][l.to[0]][l.to[1]] < F[1][l.from[0]][l.from[1]],
+      2: F[2][l.to[0]][l.to[1]] < F[2][l.from[0]][l.from[1]] } : null }));
     out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles), lanes };
     console.log(out[key].name.padEnd(28), out[key].pinches.length, 'safety nets,', out[key].lanes.length, 'kill points');
   }
