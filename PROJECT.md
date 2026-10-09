@@ -138,7 +138,10 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   blocker, so all blocker results are within chance. 65/104 puzzles end the same whatever the plans; compare plans by
   averaging several nudged runs per close puzzle instead. Round 8 did that (40 close puzzles x 6 nudges): pair 58.8%
   returned vs no blocking 54.6% (per puzzle +4 points, standard error 5): blockers really don't help. Suspect: each
-  plan assumes the other balls keep their keys.
+  plan assumes the other balls keep their keys. Round 9 (REACT=1, other balls steer by simple rules in each
+  lookahead, search hook `react`): pair 62.5% vs no blocking 57.1% (+5, se 5.5). **Decision: stop blocking with
+  rules + short search.** Real blocking probably needs planning two balls together over 1 s+, or learning it from
+  real games.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
