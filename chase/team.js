@@ -24,6 +24,9 @@
 //           flag like 'alone' instead of chasing a spot it cannot reach
 //   lever3  lever2, and when leverage is not on offer but the teammate is not behind the chaser, it moves to get
 //           between them (60% of the way from the chaser to the carrier) instead of heading home
+//   rollout no rule about where to stand: every plan, try 12 ways of moving (11 spots fixed relative to the chaser
+//           nearest the carrier, on and beside its line to the carrier at 0.42-1.5 m, plus heading home), simulate
+//           each 1.5 s ahead with everyone on simple steering, and go for the one that turns out best for the carrier
 //   pair    smart, and the carrier uses it: a chaser with the teammate between it and the carrier (within half a
 //           metre of the line between them) does not count as a danger, so the carrier steers behind its blocker
 // Each ball plans every 4 ticks and carries out 2 moves per plan; while one plans, the others keep their keys.
@@ -37,7 +40,7 @@ const C = require('./run');
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3'];
+const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 // REACT=1: inside each ball's lookahead the other three steer by simple rules (chasers straight at the carrier, the
@@ -99,7 +102,40 @@ function game(s, planA, planB) {
     extra: (x, y) => { let e = 0; for (const c of chasers) if (alive(c)) { const a = pos(c), d = Math.hypot(x - a.x, y - a.y);
       if (d < 1.2 && !(planB === 'pair' && shielded(a, x, y))) e += 30 * (1 - d / 1.2); } return e; } };
   // the escort: between the carrier and the nearer chaser, a tile from the carrier; or just towards the flag
+  // rollout: candidate ways for the teammate to move, each a target recomputed from the current positions
+  const H = 90, CANDS = [];
+  for (const d of [0.42, 0.8, 1.5]) for (const side of [-0.6, 0, 0.6]) CANDS.push({ d, side });
+  CANDS.push({ mid: true }, { nearCarrier: true }, { home: true });
+  const nearestChaser = () => { const r = pos(ca), live = chasers.filter(alive); if (!live.length) return null;
+    return live.reduce((a, b) => (Math.hypot(pos(a).x - r.x, pos(a).y - r.y) <= Math.hypot(pos(b).x - r.x, pos(b).y - r.y) ? a : b)); };
+  const candTarget = (cd) => {
+    const r = pos(ca), c = nearestChaser(); if (cd.home || !c) return [goalC.x, goalC.y];
+    const cp = pos(c), dx = r.x - cp.x, dy = r.y - cp.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+    if (cd.mid) return [cp.x + dx / 2, cp.y + dy / 2];
+    if (cd.nearCarrier) return [r.x - ux * Math.min(0.6, L / 2), r.y - uy * Math.min(0.6, L / 2)];
+    const d = Math.min(cd.d, L * 0.8); return [cp.x + ux * d - uy * cd.side, cp.y + uy * d + ux * cd.side];
+  };
+  const rolloutPick = () => {
+    const root = sim.save(); let best = null, bestS = -Infinity;
+    for (const cd of CANDS) {
+      sim.restore(root); let score = null; const d0 = N.fieldAt(Fc, pos(ca).x, pos(ca).y);
+      for (let t = 0; t < H && score == null; t++) {
+        const r = pos(ca);
+        for (const c of chasers) if (alive(c)) steer(c, r.x, r.y, null);
+        if (alive(ca)) steer(ca, goalC.x, goalC.y, Fc);
+        if (alive(es)) { const [x, y] = candTarget(cd); steer(es, x, y, null); }
+        sim.tickOnce();
+        if (ca.dead || touching()) score = -1000 + t;
+        else if (Math.hypot(pos(ca).x - goalC.x, pos(ca).y - goalC.y) < CAP_R) score = 1000 - t;
+      }
+      if (score == null) { const r = pos(ca); let md = Infinity; for (const c of chasers) if (alive(c)) md = Math.min(md, Math.hypot(pos(c).x - r.x, pos(c).y - r.y));
+        score = 10 * Math.min(md, 4) + 5 * (d0 - N.fieldAt(Fc, r.x, r.y)); }
+      if (score > bestS) { bestS = score; best = cd; }
+    }
+    sim.restore(root); return best;
+  };
   const escortTask = () => {
+    if (planB === 'rollout') { const [x, y] = candTarget(rolloutPick()); return ballTask(x, y, { doneAt: () => false }); }
     if (planB === 'lever' || planB === 'lever2' || planB === 'lever3') {
       const r = pos(ca), live = chasers.filter(alive);
       if (!live.length) return ballTask(goalC.x, goalC.y, { doneAt: () => false });
