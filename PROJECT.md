@@ -150,6 +150,8 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   `DELAY=12` in team.js applies every ball's keys 200 ms late. Round 10 (DELAY=12, mark vs none, 40 close x 6): 61.7%
   vs 60.8% returned, and touches still don't hold bot chasers up (26% vs 27%): reaction time is not the reason.
   Left: the real association may not be causal, or people give up / switch target after a block where bots don't.
+  Next second after a touch: real chasers still closing 31% (near miss 38%), bots 20% (20%). Bot blockers are not
+  grazing: they approach harder than real ones (median 0.8 vs 0.4 m/s); real blockers stand in the way.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
