@@ -27,5 +27,9 @@ for (const v of versions) {
   // windows not cut short by a teammate: the bot had the whole chance
   const fair = rows.filter((r) => r.real !== 'returned by someone else');
   console.log(`windows not ended by a teammate's return (${fair.length}): real chaser ${pct(fair.filter((r) => r.real === 'returned').length, fair.length)}, bot ${pct(fair.filter((r) => r.result === 'returned').length, fair.length)}`);
+  // the recorded carrier path is blurred around fast moves (real returns show 0.38-0.7 m): the same with 0.5 m
+  const nearOk = (r) => r.result === 'returned' || (r.near != null && r.result !== 'pop');
+  console.log(`within 0.5 m instead of touching: all ${pct(rows.filter(nearOk).length, rows.length)}; where the real chaser returned it ${pct(both.filter(nearOk).length, both.length)};` +
+    ` windows not ended by a teammate ${pct(fair.filter(nearOk).length, fair.length)}`);
   console.log(`thinking: ${(rows.reduce((a, r) => a + r.ms, 0) / 1000 / (rows.reduce((a, r) => a + r.ticks, 0) / 60)).toFixed(2)} s per game second`);
 }
