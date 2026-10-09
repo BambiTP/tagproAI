@@ -11,3 +11,4 @@ labels/replays.txt
 labels/*.log
 chase/scenarios/
 chase/results/
+league/state/
