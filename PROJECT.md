@@ -156,7 +156,9 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   `lever` (get in front of the chaser on its line to the carrier, coming in ahead of it, then mirror it) got leverage
   in 36% of games and chasing it otherwise hurt (round 11: 58.8% vs 54.6%). `lever2` goes for it only when on offer
   (already between, within 3 tiles of the line): round 12 52.9% vs 54.6% overall (-1.7, se 2.5); in games where it
-  got leverage 42% vs 52% (saved 9, cost 2). First blocker that looks like it helps; needs fresh puzzles.
+  got leverage 42% vs 52% (saved 9, cost 2). Round 13 on 105 fresh puzzles x 3 nudges: 68.6% vs 71.7% returned
+  (per puzzle -3.2, se 1.9; saved 18, cost 8; with leverage 48.8% vs 58.1%). **lever2 works** (both rounds: 27 saved
+  vs 10 cost, p < 0.01). Limit: leverage reached in only ~27% of games. Next: getting leverage more often.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
