@@ -5,6 +5,9 @@
 // Chasing plans (the puzzle's chaser always intercepts):
 //   both    the teammate intercepts too (cut the carrier off from two sides)
 //   guard   the teammate goes to the carrier's flag and waits in front of it
+//   rollout the teammate picks, every plan, among 9 targets (intercept, straight at the carrier, the carrier's flag,
+//           points 2/4/6/8/11 tiles ahead on the carrier's route home) by simulating each 1.5 s ahead with everyone on
+//           simple steering: the soonest touch wins, else the carrier furthest from capping and from its flag
 // Carrying plans (the carrier always escapes: home, keeping away from both chasers):
 //   alone   the teammate also heads for the carrier's flag (no blocking on purpose)
 //   block   the teammate stays between the carrier and the nearer chaser, about a tile from the carrier
@@ -40,7 +43,7 @@ const C = require('./run');
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout'];
+const PLANS_A = ['both', 'guard', 'rollout'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 // REACT=1: inside each ball's lookahead the other three steer by simple rules (chasers straight at the carrier, the
@@ -210,7 +213,37 @@ function game(s, planA, planB) {
   };
   const withReact = (task) => (REACT ? { ...task, react } : task);
   const plans = new Map(), keys = new Map(), lag = new Map();
-  const roles = [[ch, () => intercept(ch)], [m2, () => (planA === 'guard' ? guard() : intercept(m2))], [ca, () => carrierTask], [es, escortTask]];
+  // rollout for the chaser's teammate: targets as functions of the current positions
+  const MATE = [
+    () => { const q = pos(m2), w = vel(m2), r = pos(ca), rv = vel(ca); return C.aimPoint({ aim: 'route' }, sim.tiles, Fc, spot, { x: q.x, y: q.y, vx: w.x, vy: w.y }, [r.x, r.y], [rv.x, rv.y]); },
+    () => { const r = pos(ca); return [r.x, r.y]; },
+    () => [goalC.x, goalC.y],
+    ...[2, 4, 6, 8, 11].map((n) => () => { const r = pos(ca), rt = C.routeHome(Fc, r.x, r.y, n); const e = rt[rt.length - 1]; return [e[0] * TILE, e[1] * TILE]; }),
+  ];
+  const escortSteer = () => { if (!alive(es)) return; if (planB === 'alone' || planB === 'rollout') steer(es, goalC.x, goalC.y, Fc); else { const [x, y] = markSpot(); steer(es, x, y, null); } };
+  const matePick = () => {
+    const root = sim.save(); let best = 0, bestS = -Infinity;
+    MATE.forEach((target, i) => {
+      sim.restore(root); let score = null; const d0 = N.fieldAt(Fc, pos(ca).x, pos(ca).y);
+      for (let t = 0; t < H && score == null; t++) {
+        const r = pos(ca);
+        if (alive(ch)) steer(ch, r.x, r.y, null);
+        if (alive(m2)) { const [x, y] = target(); steer(m2, x, y, Fc); }
+        if (alive(ca)) steer(ca, goalC.x, goalC.y, Fc);
+        escortSteer();
+        sim.tickOnce();
+        if (ca.dead || touching()) score = 1000 - t;
+        else if (Math.hypot(pos(ca).x - goalC.x, pos(ca).y - goalC.y) < CAP_R) score = -1000 + t;
+      }
+      if (score == null) { const r = pos(ca); let md = Infinity; for (const c of chasers) if (alive(c)) md = Math.min(md, Math.hypot(pos(c).x - r.x, pos(c).y - r.y));
+        score = -10 * Math.min(md, 4) - 5 * (d0 - N.fieldAt(Fc, r.x, r.y)); }
+      if (score > bestS) { bestS = score; best = i; }
+    });
+    sim.restore(root);
+    const [gx, gy] = MATE[best]();
+    return ballTask(gx, gy, { doneAt: (x, y) => { const b = pos(ca); return Math.hypot(x - b.x, y - b.y) < TOUCH; } });
+  };
+  const roles = [[ch, () => intercept(ch)], [m2, () => (planA === 'guard' ? guard() : planA === 'rollout' ? matePick() : intercept(m2))], [ca, () => carrierTask], [es, escortTask]];
   let ms = 0;
   const trace = [];
   const done = (result, t) => ({ id: s.id, result, ticks: t, ms: Math.round(ms), mate: mate.id, escort: escort.id, path: trace });

@@ -1,5 +1,8 @@
-// chase/compare.js - blocking plans against no blocking on the same puzzles and nudges (results/team-both-<plan>-<tag><nudge>.jsonl)
+// chase/compare.js - two-against-two plans against a baseline on the same puzzles and nudges
+// (results/team-<chasing>-<carrying>-<tag><nudge>.jsonl)
 //   node chase/compare.js <tag: f for the fresh puzzles, j for the close ones> <plan> [plan...]
+// A plan is a carrying plan (compared with both-alone, chasers unchanged) or <chasing>-<carrying> (BASE=<chasing>-<carrying>
+// sets the baseline; default both-alone). "Better" is from the carrier's side: fewer returns.
 const fs = require('fs'), path = require('path');
 const RES = path.join(__dirname, 'results'), [tag, ...plans] = process.argv.slice(2);
 const get = (b) => { const o = {};
@@ -7,7 +10,7 @@ const get = (b) => { const o = {};
     const j = f.match(new RegExp('-' + tag + '(-?0(\\.\\d+)?)\\.jsonl'))[1];
     for (const r of fs.readFileSync(path.join(RES, f), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))) o[r.id + '|' + j] = r; }
   return o; };
-const A = get('alone'), m = (x) => x.reduce((a, b) => a + b, 0) / x.length, ret = (r) => +(r.result === 'returned');
+const A = get(process.env.BASE || 'both-alone'), m = (x) => x.reduce((a, b) => a + b, 0) / x.length, ret = (r) => +(r.result === 'returned');
 for (const b of plans) {
   const B = get(b), ks = Object.keys(B).filter((k) => A[k]); if (!ks.length) { console.log(b, 'no games yet'); continue; }
   let s = 0, c = 0; for (const k of ks) { if (ret(A[k]) && !ret(B[k])) s++; if (!ret(A[k]) && ret(B[k])) c++; }
