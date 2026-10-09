@@ -166,7 +166,10 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   blocker. `chase/compare.js f <plans>` compares plans on the fresh set. Round 16: rollout choice for the chaser's
   teammate (`team.js rollout alone`) was WORSE for the chasers (68.3% vs 71.7% returned, -3.5, se 1.7): the rollout's
   chaser model (straight at the carrier, parks at its cut-off point) is too crude. Fix: lead the carrier in rollouts.
-  Round 17: rollout2 (carrier also picks by rollout).
+  Round 17: rollout2 (carrier also picks by rollout: home or 8 side-steps of 3 tiles): returned 21.3% vs 71.7%
+  (saved 165 / cost 6); caps ~50% vs 28%, held 8 s far more often. Caveat: the chasers aim at the carrier's route
+  home, which side-steps fool. Round 18 (rlead, rollout chaser with leading in the simulations): still worse than
+  plain interceptors so far (63.9% vs 68.6%).
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
