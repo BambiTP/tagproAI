@@ -152,6 +152,11 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   Left: the real association may not be causal, or people give up / switch target after a block where bots don't.
   Next second after a touch: real chasers still closing 31% (near miss 38%), bots 20% (20%). Bot blockers are not
   grazing: they approach harder than real ones (median 0.8 vs 0.4 m/s); real blockers stand in the way.
+- Leverage blockers (the user's advice: stay between opponent and carrier, once you have leverage barely adjust):
+  `lever` (get in front of the chaser on its line to the carrier, coming in ahead of it, then mirror it) got leverage
+  in 36% of games and chasing it otherwise hurt (round 11: 58.8% vs 54.6%). `lever2` goes for it only when on offer
+  (already between, within 3 tiles of the line): round 12 52.9% vs 54.6% overall (-1.7, se 2.5); in games where it
+  got leverage 42% vs 52% (saved 9, cost 2). First blocker that looks like it helps; needs fresh puzzles.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
