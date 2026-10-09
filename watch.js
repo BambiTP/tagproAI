@@ -439,11 +439,14 @@ http.createServer((req, res) => {
     // a picture for Claude (private page only): a plain upload form; the image is saved to runs/uploads/
     if (u.pathname === '/upload' && req.method === 'GET') return send(res, 200, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Send a picture</title><body style="background:#111;color:#ddd;font:16px system-ui;padding:24px">
-<h2>Send a picture to Claude</h2><p>Pick or drop an image (PNG, JPEG, GIF or WebP, up to 15 MB).</p>
-<input type="file" id="f" accept="image/*"><p id="m"></p>
-<script>f.onchange=async()=>{const x=f.files[0];if(!x)return;m.textContent='Sending…';
-const r=await fetch('upload?name='+encodeURIComponent(x.name),{method:'POST',body:x,headers:{'content-type':x.type}});
-m.textContent=r.ok?'Sent: '+(await r.json()).saved+'. Tell Claude it is there.':'Failed: '+r.status;};</script>`, 'text/html');
+<h2>Send a picture to Claude</h2><p>Paste an image here (Ctrl+V), drop one on the page, or pick a file (PNG, JPEG, GIF or WebP, up to 15 MB).</p>
+<input type="file" id="f" accept="image/*"><p id="m"></p><img id="pv" style="max-width:100%;max-height:60vh;display:none;border:1px solid #444">
+<script>const go=async(x)=>{if(!x||!x.type.startsWith('image/'))return;m.textContent='Sending…';pv.src=URL.createObjectURL(x);pv.style.display='block';
+const r=await fetch('upload',{method:'POST',body:x,headers:{'content-type':x.type}});
+m.textContent=r.ok?'Sent: '+(await r.json()).saved+'. Tell Claude it is there.':'Failed: '+r.status;};
+f.onchange=()=>go(f.files[0]);
+addEventListener('paste',(e)=>{for(const it of e.clipboardData.items)if(it.type.startsWith('image/')){go(it.getAsFile());e.preventDefault();break;}});
+addEventListener('dragover',(e)=>e.preventDefault());addEventListener('drop',(e)=>{e.preventDefault();go(e.dataTransfer.files[0]);});</script>`, 'text/html');
     if (u.pathname === '/upload' && req.method === 'POST') {
       const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[req.headers['content-type']];
       if (!ext) { res.writeHead(415); return res.end(); }
