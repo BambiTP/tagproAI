@@ -62,9 +62,10 @@ function fast(s, k, react, touch = TOUCH) {
   return { worst, worstMiss };
 }
 
-// the furthest distance at which some chaser key (straight at the carrier, or 45 degrees either side) is a certain
+// the furthest distance (from 0.40 m: at 0.38, touching, the engine pushes the balls apart on the first tick before a
+// touch can count) at which some chaser key (straight at the carrier, or 45 degrees either side) is a certain
 // kill, found by halving (closer is never harder to kill), to within 2 cm; check = (d) => is it a kill at distance d
-function edge(check, lo = 0.38, hi = 6) {
+function edge(check, lo = 0.4, hi = 6) {
   if (!check(lo)) return 0;
   if (check(hi)) return hi;
   while (hi - lo > 0.02) { const m = (lo + hi) / 2; if (check(m)) lo = m; else hi = m; }

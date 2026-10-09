@@ -16,7 +16,7 @@ for (const [ca, fa, label] of [[0, 0, 'chaser heading straight at the carrier, c
   [0, 180, 'chaser heading straight at the carrier, carrier coming straight at the chaser'],
   [0, 90, 'chaser heading straight at the carrier, carrier running across (sideways)'],
   [0, 45, 'chaser heading straight at the carrier, carrier running away at 45 degrees']]) {
-  console.log(`\n${label}; carrier reacts after ${react} ticks. Furthest certain kill (metres; 0.38 = touching; - = none):`);
+  console.log(`\n${label}; carrier reacts after ${react} ticks. Furthest certain kill (metres; 0.40 = the closest tested; - = none):`);
   console.log('chaser speed \\ carrier speed  ' + speeds.map((v) => String(v).padStart(5)).join(''));
   for (const cs of speeds) console.log(String(cs).padStart(29) + '  ' + speeds.map((fs_) => { const r = get(cs, cs ? ca : 0, fs_, fs_ ? fa : 0); return (r ? (r.e ? r.e.toFixed(2) : '-') : '?').padStart(5); }).join(''));
 }
