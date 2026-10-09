@@ -19,6 +19,9 @@
 //           just mirror the chaser's movement (its velocity, plus a small pull back onto the spot). The spot moves
 //           at the chaser's speed, so to get there the teammate heads for where the chaser will be by the time it
 //           arrives (offset the same way), coming in ahead of the chaser rather than chasing it
+//   lever2  lever, but only when it is on offer: the teammate is already between the chaser and the carrier (ahead
+//           of the chaser along its line to the carrier, within 3 tiles of that line); otherwise it heads for the
+//           flag like 'alone' instead of chasing a spot it cannot reach
 //   pair    smart, and the carrier uses it: a chaser with the teammate between it and the carrier (within half a
 //           metre of the line between them) does not count as a danger, so the carrier steers behind its blocker
 // Each ball plans every 4 ticks and carries out 2 moves per plan; while one plans, the others keep their keys.
@@ -32,7 +35,7 @@ const C = require('./run');
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever'];
+const PLANS_A = ['both', 'guard'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 // REACT=1: inside each ball's lookahead the other three steer by simple rules (chasers straight at the carrier, the
@@ -95,12 +98,16 @@ function game(s, planA, planB) {
       if (d < 1.2 && !(planB === 'pair' && shielded(a, x, y))) e += 30 * (1 - d / 1.2); } return e; } };
   // the escort: between the carrier and the nearer chaser, a tile from the carrier; or just towards the flag
   const escortTask = () => {
-    if (planB === 'lever') {
+    if (planB === 'lever' || planB === 'lever2') {
       const r = pos(ca), live = chasers.filter(alive);
       if (!live.length) return ballTask(goalC.x, goalC.y, { doneAt: () => false });
       const c = live.reduce((a, b) => (Math.hypot(pos(a).x - r.x, pos(a).y - r.y) <= Math.hypot(pos(b).x - r.x, pos(b).y - r.y) ? a : b));
       const cp = pos(c), cv = vel(c), dx = r.x - cp.x, dy = r.y - cp.y, L = Math.hypot(dx, dy) || 1, k = Math.min(0.42, L / 2);
       const sx = cp.x + dx / L * k, sy = cp.y + dy / L * k, q = pos(es), w = vel(es);
+      if (planB === 'lever2') { // on offer only from between the chaser and the carrier
+        const along = ((q.x - cp.x) * dx + (q.y - cp.y) * dy) / L, side = Math.abs((q.x - cp.x) * dy - (q.y - cp.y) * dx) / L;
+        if (!(along > 0 && along < L && side < 3 * TILE) && Math.hypot(q.x - sx, q.y - sy) >= 0.5) return ballTask(goalC.x, goalC.y, { doneAt: () => false });
+      }
       if (Math.hypot(q.x - sx, q.y - sy) < 0.5) { // leverage: mirror the chaser, pulled back onto the spot
         let vx = cv.x + 4 * (sx - q.x), vy = cv.y + 4 * (sy - q.y); const V = Math.hypot(vx, vy); if (V > 3) { vx *= 3 / V; vy *= 3 / V; }
         const ex = vx - w.x, ey = vy - w.y, ax = Math.abs(ex) < 0.1 ? 0 : Math.sign(ex), ay = Math.abs(ey) < 0.1 ? 0 : Math.sign(ey);
