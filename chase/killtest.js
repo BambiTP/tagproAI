@@ -4,7 +4,13 @@
 // Ground truth: the real engine. Fast check: plain motion maths (drag, push up to top speed, no collisions), which is
 // what a chaser can afford every few ticks. This samples random distances, speeds and directions on open floor and
 // records both answers, so the fast check can be tuned until it never claims a kill that isn't one.
-//   node chase/killtest.js <samples> [seed]   -> appends to chase/results/killtest.jsonl
+//   node chase/killtest.js <samples> [seed]   -> appends to chase/results/killtest.jsonl (random setups)
+//   node chase/killtest.js grid [part] [parts] -> chase/results/killgrid[-part].csv: for every combination of carrier
+//     and chaser speed (0-3 m/s by 0.25), each one's direction of travel (16 directions, 22.5 degrees apart, relative
+//     to the line between them) and carrier reaction (0, 6, 12 ticks): the furthest distance (to 2 cm) at which some
+//     chaser key pointing roughly at the carrier is a certain kill, by the engine and by the fast check (1 cm margin).
+//     Columns: cs, ca (chaser direction, degrees from straight at the carrier), fs, fa (carrier direction, degrees from
+//     straight away from the chaser), react, engine, fast (0 = no kill even touching distance away).
 const fs = require('fs'), path = require('path');
 const { Sim, getMap, setKeys, ACTIONS } = require('../sim');
 
@@ -56,7 +62,42 @@ function fast(s, k, react, touch = TOUCH) {
   return { worst, worstMiss };
 }
 
-if (require.main === module) {
+// the furthest distance at which some chaser key (straight at the carrier, or 45 degrees either side) is a certain
+// kill, found by halving (closer is never harder to kill), to within 2 cm; check = (d) => is it a kill at distance d
+function edge(check, lo = 0.38, hi = 6) {
+  if (!check(lo)) return 0;
+  if (check(hi)) return hi;
+  while (hi - lo > 0.02) { const m = (lo + hi) / 2; if (check(m)) lo = m; else hi = m; }
+  return +lo.toFixed(2);
+}
+function grid(part = 0, parts = 1) {
+  const sim = new Sim(arena()), ch = sim.addBall(1), cb = sim.addBall(2);
+  const out = fs.openSync(path.join(__dirname, 'results', 'killgrid' + (parts > 1 ? '-' + part : '') + '.csv'), 'w');
+  fs.writeSync(out, 'cs,ca,fs,fa,react,engine,fast\n');
+  const KEYS = [3, 4, 2]; // right (straight at the carrier), down-right, up-right
+  let n = 0, i = 0;
+  for (let cs = 0; cs <= 3.001; cs += 0.25) for (let ca = 0; ca < 360; ca += 22.5) {
+    if (cs === 0 && ca) continue; // a still chaser has no direction
+    if (i++ % parts !== part) continue;
+    for (let fs_ = 0; fs_ <= 3.001; fs_ += 0.25) for (let fa = 0; fa < 360; fa += 22.5) {
+      if (fs_ === 0 && fa) continue;
+      const cr = ca * Math.PI / 180, fr = fa * Math.PI / 180;
+      // the carrier at (8, 8), the chaser d metres to its left; ca = chaser's direction (0 = straight at the carrier),
+      // fa = carrier's direction (0 = straight away from the chaser), both counted clockwise on screen
+      const at = (d) => ({ cx: 8 - d, cy: 8, cvx: Math.cos(cr) * cs, cvy: Math.sin(cr) * cs, fx: 8, fy: 8, fvx: Math.cos(fr) * fs_, fvy: Math.sin(fr) * fs_ });
+      for (const react of REACTS) {
+        const e = edge((d) => KEYS.some((k) => exact(sim, ch, cb, at(d), k, react) < Infinity));
+        const f = edge((d) => KEYS.some((k) => fast(at(d), k, react, TOUCH - 0.01).worst < Infinity));
+        fs.writeSync(out, [cs, ca, fs_, fa, react, e, f].join(',') + '\n'); n++;
+      }
+    }
+  }
+  return n;
+}
+
+if (require.main === module && process.argv[2] === 'grid') {
+  console.log(grid(+(process.argv[3] || 0), +(process.argv[4] || 1)), 'cases');
+} else if (require.main === module) {
   const n = +(process.argv[2] || 100); let seed = +(process.argv[3] || Date.now() % 1e9);
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
   const sim = new Sim(arena()), ch = sim.addBall(1), ca = sim.addBall(2);
@@ -78,4 +119,4 @@ if (require.main === module) {
     if ((i + 1) % 1000 === 0) fs.writeFileSync(path.join(__dirname, 'results', 'killtest' + (process.env.TAG || '') + '-counts.json'), JSON.stringify({ samples: i + 1, counts }));
   }
 }
-module.exports = { exact, fast, arena, keyOf };
+module.exports = { exact, fast, arena, keyOf, grid };
