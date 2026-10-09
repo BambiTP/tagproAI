@@ -5,10 +5,7 @@
 // above and a wall just to the left), and also along both diagonals that run beside those walls (up-right and
 // down-left for that example): a carrier there cannot keep going any of those ways. Beside a slanted (45 degree) wall
 // one of those diagonals is a long free run, so slanted walls do not count. dirs names the two blocked directions.
-// Names (the user's): pinches are "safety nets" (chasers fall back to them), dead-end lanes are "kill points".
-// Dead-end lanes: a strip along a wall that ends where a wall juts in across it. A carrier running along the wall gets
-// boxed in, so a chaser only has to hold one line parallel to the wall (depth tiles out from it) back from the jut.
-// lanes: [{ from, to, depth, guard: [a, b] }] (tile coordinates; from -> to runs along the wall into the dead end).
+// Names (the user's): pinches are "safety nets" (chasers fall back to them); flat walls into a bump are "kill points".
 // For every floor tile, in 4 directions (across, up-down, both diagonals): the chord = the straight run of open floor
 // through it. A chord is a pinch when it is at most MAX_WIDTH tiles long, no longer than the parallel chords one tile to
 // either side, the floor continues on both sides (not a dead end), and 2-4 tiles to one side the parallel chords are
@@ -84,49 +81,43 @@ function cornersOf(tiles) {
   return out;
 }
 
-function lanesOf(tiles, minLen = 3, maxLen = 15, maxDepth = 3) {
-  const W = tiles.length, H = tiles[0].length, open0 = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
-  const out = [];
+// Kill points (the user's definition): a flat stretch of wall that runs straight into an inward bump. From the bump
+// (a wall straight ahead of a ball sliding along the flat wall) back to where the flat wall starts (the wall stepping
+// away, or a corner). If the flat wall runs on for more than MAX_FLAT tiles without a bump it is not a kill point.
+// Straight walls and smooth 45 degree walls both count. lanes: [{ from, to }] = the flat stretch, running into the bump.
+const MAX_FLAT = 10, MIN_FLAT = 2;
+function lanesOf(tiles) {
+  const W = tiles.length, H = tiles[0].length, open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
+  const step = (x, y, dx, dy) => open(x + dx, y + dy) && (!dx || !dy || (open(x + dx, y) && open(x, y + dy)));
+  const lanes = [];
   for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
-    if (!open0(x, y)) continue;
-    // n: towards the wall being hugged; straight walls and 45 degree walls (most maps have both)
-    for (const [nx, ny] of [[0, -1], [0, 1], [-1, 0], [1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-      const open = open0;
+    if (!open(x, y)) continue;
+    for (const [nx, ny] of [[0, -1], [0, 1], [-1, 0], [1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) { // n: towards the flat wall
       if (open(x + nx, y + ny)) continue;
       for (const s of [1, -1]) {
-        const fx = -ny * s, fy = nx * s; // forward, along the wall (diagonal when the wall is)
-        if (open(x + fx, y + fy)) continue; // the end of a lane: a wall straight ahead
-        // how far the jut reaches out from the hugged wall (tiles from the wall, within the lane, blocked ahead)
-        let depth = 1;
-        while (depth < maxDepth && open(x - depth * nx, y - depth * ny) && !open(x - depth * nx + fx, y - depth * ny + fy)) depth++;
-        // back along the wall while it stays unbroken (no way out on the wall side) and the floor continues
-        let len = 0;
-        while (len < maxLen && open(x - (len + 1) * fx, y - (len + 1) * fy) && !open(x - (len + 1) * fx + nx, y - (len + 1) * fy + ny)) len++;
-        if (len < minLen) continue;
-        // there must be open floor beyond the guard line (otherwise it is a corridor, not a lane off open space)
-        const gx = x - depth * nx, gy = y - depth * ny;
-        if (!open(gx, gy)) continue;
-        out.push({ from: [x - len * fx, y - len * fy], to: [x, y], depth, len, f: [fx, fy],
-          guard: [[gx - nx * 0.5 - len * fx, gy - ny * 0.5 - len * fy], [gx - nx * 0.5, gy - ny * 0.5]] });
+        const fx = -ny * s, fy = nx * s; // forward, along the wall
+        if (step(x, y, fx, fy)) continue; // no bump straight ahead: not the end of a kill point
+        // back along the flat wall until it stops being flat (the wall steps away) or the floor ends
+        let len = 0, ended = false;
+        for (;;) {
+          const bx = x - (len + 1) * fx, by = y - (len + 1) * fy;
+          if (!step(x - len * fx, y - len * fy, -fx, -fy) || open(bx + nx, by + ny)) { ended = true; break; }
+          len++; if (len > MAX_FLAT) break;
+        }
+        if (!ended || len < MIN_FLAT) continue; // too long without a bump, or too short to run along
+        lanes.push({ from: [x - len * fx, y - len * fy], to: [x, y] });
       }
     }
   }
-  // lanes pointing the same way into (nearly) the same spot are one kill point: keep the longest
-  out.sort((a, b) => b.len - a.len);
-  const kept = [];
-  for (const l of out) {
-    if (kept.some((k) => k.f[0] === l.f[0] && k.f[1] === l.f[1] && Math.hypot(k.to[0] - l.to[0], k.to[1] - l.to[1]) <= 2)) continue;
-    kept.push(l);
-  }
-  return kept.map(({ from, to, depth, guard }) => ({ from, to, depth, guard }));
+  return lanes;
 }
 
 if (require.main === module) {
   const out = {};
   for (const key of mapKeys()) {
     const m = getMap(key);
-    out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles), corners: cornersOf(m.tiles), lanes: lanesOf(m.tiles) };
-    console.log(out[key].name.padEnd(28), out[key].pinches.length, 'pinches,', out[key].lanes.length, 'dead-end lanes');
+    out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles), lanes: lanesOf(m.tiles) };
+    console.log(out[key].name.padEnd(28), out[key].pinches.length, 'safety nets,', out[key].lanes.length, 'kill points');
   }
   fs.writeFileSync(path.join(__dirname, 'pinches.json'), JSON.stringify(out));
 }
