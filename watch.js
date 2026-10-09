@@ -330,6 +330,8 @@ function duelView(q) {
 // the moment: the map with the replay's boosts, bombs and gates, your start (the real carrier's) and the chasers' (the
 // real chaser and its nearest teammate). Your results go to runs/chaseme.jsonl.
 const CHASE = require('./chase/run');
+// kill points and safety nets per map (chase/pinches.js), for the browser's kill-point chasers
+const spotsOf = (key) => { try { const a = JSON.parse(fs.readFileSync(path.join(__dirname, 'chase', 'pinches.json'), 'utf8'))[key]; return a ? { pinches: a.pinches, lanes: a.lanes || [] } : null; } catch (e) { return null; } };
 let chaseIds = null;
 function chaseList() {
   if (!chaseIds) {
@@ -362,9 +364,39 @@ function chaseMe(i) {
     return { i: n, count: ids.length, id: s.id, mapName: s.map, t0: s.t0, map, tile: N.TILE, touchR: N.BALL_R,
       me: { x: g0[0], y: g0[1], vx: (g3[0] - g0[0]) * 60 / n3, vy: (g3[1] - g0[1]) * 60 / n3, team: s.carrier.team, name: s.carrier.name },
       chasers: [{ ...s.chaser, team: s.chaserTeam }, { x: mate.x, y: mate.y, vx: mate.vx, vy: mate.vy, name: mate.name, team: s.chaserTeam }],
-      spot: { x: spot[0] * N.TILE, y: spot[1] * N.TILE }, real: { outcome: s.outcome, ms: s.realMs } };
+      spot: { x: spot[0] * N.TILE, y: spot[1] * N.TILE }, real: { outcome: s.outcome, ms: s.realMs }, spots: spotsOf(s.key) };
   }
   return { count: 0 };
+}
+
+// grab starts: you have just grabbed the enemy flag and start a tile behind it (away from home); the two chasers start
+// side by side `ahead` tiles further along your route home, standing still. Map i % n of the rotation, your team alternates.
+function grabStart(i, ahead) {
+  const ks = N.mapKeys().filter((k) => { const t = getMap(k).tiles; return CHASE.capSpot(t, 1) && CHASE.capSpot(t, 2); });
+  if (!ks.length) return { count: 0 };
+  const count = ks.length * 2, n = ((i % count) + count) % count, key = ks[n % ks.length], team = n < ks.length ? 1 : 2;
+  const map = JSON.parse(JSON.stringify(getMap(key))), T = map.tiles, home = CHASE.capSpot(T, team), flag = CHASE.capSpot(T, 3 - team);
+  const F = N.field(T, home[0], home[1]), d = (x, y) => (x < 0 || y < 0 || x >= F.W || y >= F.H) ? Infinity : F.d[x * F.H + y];
+  // behind the flag: the open neighbour furthest from home by route
+  let me = flag, md = d(flag[0], flag[1]);
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const v = d(flag[0] + a, flag[1] + b); if (v < Infinity && v > md) { md = v; me = [flag[0] + a, flag[1] + b]; } }
+  // ahead: the route home from the flag, `ahead` tiles along it; chasers either side of it, across the route's direction
+  const route = CHASE.routeHome(F, flag[0] * N.TILE, flag[1] * N.TILE, 200);
+  let k = route.findIndex((r) => r[2] >= ahead * N.TILE); if (k < 0) k = route.length - 1;
+  const p = route[k], q = route[Math.min(route.length - 1, k + 2)], r0 = route[Math.max(0, k - 2)];
+  let ux = q[0] - r0[0], uy = q[1] - r0[1]; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
+  const spots = [];
+  for (const side of [1, -1]) {
+    let best = null;
+    for (const off of [1.5, 1, 2, 0.5, 2.5, 0]) { const x = Math.round(p[0] - uy * off * side), y = Math.round(p[1] + ux * off * side);
+      if (d(x, y) < Infinity && !spots.some((s) => s[0] === x && s[1] === y)) { best = [x, y]; break; } }
+    if (!best) for (const s of route.slice(k + 1)) if (!spots.some((t) => t[0] === s[0] && t[1] === s[1])) { best = [s[0], s[1]]; break; }
+    spots.push(best);
+  }
+  const ball = (t, tm) => ({ x: t[0] * N.TILE, y: t[1] * N.TILE, vx: 0, vy: 0, team: tm });
+  return { i: n, count, id: 'grab-' + key + '-' + team + '-' + ahead, grab: true, ahead, mapName: (map.info && map.info.name) || key, t0: 0, map, tile: N.TILE, touchR: N.BALL_R,
+    me: { ...ball(me, team), name: 'you' }, chasers: spots.map((s, j) => ({ ...ball(s, 3 - team), name: 'chaser ' + (j + 1) })),
+    spot: { x: home[0] * N.TILE, y: home[1] * N.TILE }, routeTiles: Math.round(md / N.TILE), spots: spotsOf(key) };
 }
 
 // ---------- http ----------
@@ -483,12 +515,13 @@ addEventListener('dragover',(e)=>e.preventDefault());addEventListener('drop',(e)
       return send(res, 200, { map: E.arenaMap(), tile: N.TILE, goal: g.goal, dir: g.dir, ca: st(g.ca), ch: g.ch.map(st), react: E.REACT, limit: E.LIMIT,
         net: fs.existsSync(nf) ? JSON.parse(fs.readFileSync(nf, 'utf8')) : null, gen: fs.existsSync(sf) ? JSON.parse(fs.readFileSync(sf, 'utf8')).gen : 0 });
     }
-    if (u.pathname === '/chaseme' && req.method === 'GET') return send(res, 200, chaseMe(parseInt(u.searchParams.get('i'), 10) || 0));
+    if (u.pathname === '/chaseme' && req.method === 'GET') { const i = parseInt(u.searchParams.get('i'), 10) || 0, ahead = parseInt(u.searchParams.get('grab'), 10);
+      return send(res, 200, ahead >= 1 && ahead <= 20 ? grabStart(i, ahead) : chaseMe(i)); }
     if (u.pathname === '/chaseme' && req.method === 'POST') {
       let body = '';
       req.on('data', (c) => { body += c; if (body.length > 2e3) req.destroy(); });
       req.on('end', () => { try { const r = JSON.parse(body);
-        if (typeof r.id !== 'string' || !/^[0-9a-f]{8}-\d+-\d+-\d+$/.test(r.id) || !['capped', 'returned', 'popped'].includes(r.result) || !Number.isInteger(r.ticks)) throw new Error('bad');
+        if (typeof r.id !== 'string' || !/^([0-9a-f]{8}|grab)-\d+-\d+-\d+$/.test(r.id) || !['capped', 'returned', 'popped'].includes(r.result) || !Number.isInteger(r.ticks)) throw new Error('bad');
         fs.appendFileSync(path.join(__dirname, 'runs', 'chaseme.jsonl'), JSON.stringify({ id: r.id, result: r.result, ticks: r.ticks, at: Date.now() }) + '\n');
         send(res, 200, { ok: true }); } catch (e) { send(res, 400, { error: 'bad' }); } });
       return;

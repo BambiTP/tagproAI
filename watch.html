@@ -72,7 +72,7 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
   <span>Moment <b id="mNum" class="big">–</b></span><span class="big" id="mTime">0.00 s</span>
   <span class="dim">You carry the flag: get to your flag (<span style="color:#3f3">green cross</span>) without being touched · arrows or WASD · R restart · N next · B back</span>
  </div>
- <div class="hud" style="padding-top:0"><select id="mMode"><option value="contain" selected>Chasers contain (cutter + presser, solo only when it can't miss)</option><option value="charge">Chasers charge (aim where you're heading)</option></select><span id="mInfo"></span></div>
+ <div class="hud" style="padding-top:0"><select id="mMode"><option value="contain" selected>Chasers contain (cutter + presser, solo only when it can't miss)</option><option value="nets">Chasers use kill points + safety nets (team.js contain)</option><option value="charge">Chasers charge (aim where you're heading)</option></select><select id="mStart"><option value="0" selected>Starts: real ranked moments</option><option value="3">Grab start: chasers 3 tiles ahead</option><option value="5">Grab start: chasers 5 tiles ahead</option><option value="8">Grab start: chasers 8 tiles ahead</option><option value="12">Grab start: chasers 12 tiles ahead</option></select><span id="mInfo"></span></div>
  <canvas id="mc" class="map"></canvas>
 </div>
 
@@ -437,17 +437,15 @@ function mKin(x,y,vx,vy,a){ // one tick of a ball holding key direction a (engin
  vx*=DAMP;vy*=DAMP;const[ax,ay]=ACTIONS[a];
  if(ax>0&&vx<MS)vx+=ACC;if(ax<0&&vx>-MS)vx-=ACC;if(ay>0&&vy<MS)vy+=ACC;if(ay<0&&vy>-MS)vy-=ACC;return[x+vx*DT,y+vy*DT,vx,vy];}
 const dirKey=(dx,dy)=>{const ax=Math.abs(dx)<.38*Math.hypot(dx,dy)?0:Math.sign(dx),ay=Math.abs(dy)<.38*Math.hypot(dx,dy)?0:Math.sign(dy);return ACTIONS.findIndex(([a,b])=>a===ax&&b===ay);};
-function mSoloKey(c,fc){ // a key direction that touches the carrier whatever it does, or -1
+function mSoloKey(c,fc){ // a key that touches the carrier whatever it does (chase/killtest.js sure): the chaser sees it REACT ticks
+ // late, so it may already have been dodging that long; after that it may press anything at once. Ignores the walls'
+ // limits on the carrier (only makes the test stricter); a chaser line that runs into a wall doesn't count.
  const q=c.p.body.GetPosition(),w=c.p.body.GetLinearVelocity();let best=-1,bestT=Infinity;
- const ux0=fc.x-q.x,uy0=fc.y-q.y,ul=Math.hypot(ux0,uy0)||1;
- const plans=[[fc.vx,fc.vy],[-fc.vx,-fc.vy],[-uy0/ul,ux0/ul],[uy0/ul,-ux0/ul]]; // keep going, brake, dodge left, dodge right
- for(let a=1;a<=8;a++){let worst=0;
-  for(const[px,py]of plans){const fa=Math.hypot(px,py)<.05?0:dirKey(px,py);let cx=q.x,cy=q.y,cvx=w.x,cvy=w.y,fx=fc.x,fy=fc.y,fvx=fc.vx,fvy=fc.vy,hit=Infinity;
-   for(let t=1;t<=SOLO_TICKS;t++){[cx,cy,cvx,cvy]=mKin(cx,cy,cvx,cvy,a);if(mWall(cx,cy))break;
-    let nf=mKin(fx,fy,fvx,fvy,t<=REACT?dirKey(fvx,fvy)<0?0:dirKey(fvx,fvy):fa<0?0:fa);if(mWall(nf[0],nf[1])){nf=[fx,fy,0,0];}[fx,fy,fvx,fvy]=nf;
-    if(Math.hypot(cx-fx,cy-fy)<TOUCH2){hit=t;break;}}
-   worst=Math.max(worst,hit);if(worst===Infinity)break;}
-  if(worst<bestT){bestT=worst;best=a;}}
+ for(let a=1;a<=8;a++){let cx=q.x,cy=q.y,cvx=w.x,cvy=w.y,fx=fc.x,fy=fc.y,fvx=fc.vx,fvy=fc.vy,sp=0,vs=0;
+  for(let t=0;t<REACT;t++){fvx*=DAMP;fvy*=DAMP;fx+=fvx*DT;fy+=fvy*DT;vs=vs*DAMP+ACC;sp+=vs*DT;}
+  for(let t=1;t<=SOLO_TICKS&&t<bestT;t++){[cx,cy,cvx,cvy]=mKin(cx,cy,cvx,cvy,a);if(mWall(cx,cy))break;
+   fvx*=DAMP;fvy*=DAMP;fx+=fvx*DT;fy+=fvy*DT;vs=vs*DAMP+ACC;sp+=vs*DT;
+   if(Math.hypot(Math.abs(fx-cx)+sp,Math.abs(fy-cy)+sp)<TOUCH2){bestT=t;best=a;break;}}}
  return bestT<=SOLO_TICKS?{a:best,t:bestT}:null;}
 function mGoTo(c,tx,ty,fc){ // to a spot moving with the carrier: match its velocity, pulled onto the spot; route round walls
  const q=c.p.body.GetPosition(),w=c.p.body.GetLinearVelocity();let wx=tx,wy=ty;
@@ -480,6 +478,36 @@ function mContain(){ // keys for both chasers this tick
   keys.set(cutter,best?mGoTo(cutter,best[0],best[1],fc):mSteer(cutter));}
  return keys;}
 
+// ---------- kill-point chasers (chase/team.js contain, same rules) ----------
+// 1. certain kill: hold the key. 2. roles: the chaser furthest along your heading is ahead, the other follows 0.8 m
+// behind you. 3. ahead chaser: you're running along a forward kill point -> it holds the open side level with you (lets
+// you run into the bump); else it waits a tile short of the next safety net on your route home; else it charges.
+// They see you REACT ticks late, like the containing chasers.
+function mNets(){
+ const h=M.hist,fc=h[Math.max(0,h.length-1-REACT)],live=M.ch.filter(c=>!c.p.dead),keys=new Map(),sp=M.d.spots||{pinches:[],lanes:[]};
+ if(!M.Fc)M.Fc=mField(M.sim.tiles,Math.round(M.d.spot.x/T_),Math.round(M.d.spot.y/T_));const Fc=M.Fc,fd=(x,y)=>{const u=Math.round(x/T_),v=Math.round(y/T_);return u<0||v<0||u>=Fc.W||v>=Fc.H?Infinity:Fc.d[u*Fc.H+v];};
+ for(const c of live){if(c.solo&&M.t<c.solo.until){keys.set(c,c.solo.a);continue;}c.solo=null;
+  if(M.t%4===0){const s=mSoloKey(c,fc);if(s){c.solo={a:s.a,until:M.t+s.t+10};keys.set(c,s.a);}}}
+ const v=Math.hypot(fc.vx,fc.vy);let hx,hy;
+ if(v>.5){hx=fc.vx/v;hy=fc.vy/v;}else{const u=Math.round(fc.x/T_),w=Math.round(fc.y/T_);let b=fd(fc.x,fc.y);hx=0;hy=0;
+  for(let a=-1;a<=1;a++)for(let e=-1;e<=1;e++){const dv=fd((u+a)*T_,(w+e)*T_);if(dv<b){b=dv;const L=Math.hypot(a,e);hx=a/L;hy=e/L;}}}
+ const along=c=>{const q=c.p.body.GetPosition();return(q.x-fc.x)*hx+(q.y-fc.y)*hy;};
+ const ahead=live.length?live.reduce((a,b)=>along(a)>=along(b)?a:b):null;
+ for(const c of live){if(keys.has(c))continue;
+  if(c!==ahead||live.length<2){keys.set(c,mGoTo(c,fc.x-hx*.8,fc.y-hy*.8,fc));continue;}
+  // on a forward kill point lane?
+  const rt=[fc.x/T_,fc.y/T_];let kp=null;
+  for(const l of sp.lanes){if(l.fwd&&!l.fwd[M.d.me.team])continue;const ax=l.from[0],ay=l.from[1],bx=l.to[0],by=l.to[1],L=Math.hypot(bx-ax,by-ay)||1,ux=(bx-ax)/L,uy=(by-ay)/L;
+   if(ux*hx+uy*hy<.7)continue;const t=(rt[0]-ax)*ux+(rt[1]-ay)*uy;if(t<-1||t>L)continue;if(Math.abs((rt[0]-ax)*uy-(rt[1]-ay)*ux)>1)continue;
+   const wallSide=fd(Math.round(bx-uy)*T_,Math.round(by+ux)*T_)===Infinity?1:-1;kp={l,ox:uy*wallSide,oy:-ux*wallSide};break;}
+  if(kp){const tx=fc.x+kp.ox*((kp.l.off||0)+1.3)*T_,ty=fc.y+kp.oy*((kp.l.off||0)+1.3)*T_;if(fd(tx,ty)<Infinity){c.role='kill point';keys.set(c,mGoTo(c,tx,ty,fc));continue;}}
+  // next safety net on the route home
+  const dr=fd(fc.x,fc.y);let net=null,bd=Infinity;
+  for(const p of sp.pinches){const mx=(p.a[0]+p.b[0])/2*T_,my=(p.a[1]+p.b[1])/2*T_;if(!(fd(mx,my)<dr-1))continue;const d=Math.hypot(mx-fc.x,my-fc.y);if(d<bd){bd=d;net=[mx,my];}}
+  if(net){const dx=fc.x-net[0],dy=fc.y-net[1],L=Math.hypot(dx,dy)||1;let tx=net[0]+dx/L*T_,ty=net[1]+dy/L*T_;if(fd(tx,ty)===Infinity){tx=net[0];ty=net[1];}
+   c.role='safety net';keys.set(c,mGoTo(c,tx,ty,{vx:0,vy:0}));continue;}
+  c.role='charge';keys.set(c,mSteer(c));}
+ return keys;}
 
 // ---------- pinches: the finder's pinch points on each map, for judging ----------
 const kv=new View($('kc')),K={d:null,i:0};
@@ -502,9 +530,10 @@ $('kc').onclick=async(e)=>{const d=K.d;if(!d)return;const r=$('kc').getBoundingC
 
 async function loadChaseMe(step){
  if(step)M.i+=step;M.state='load';
- const d=await (await fetch('chaseme?i='+M.i)).json();
+ const ahead=+$('mStart').value,d=await (await fetch('chaseme?i='+M.i+(ahead?'&grab='+ahead:''))).json();
  if(!d.count){$('mInfo').textContent='No chase moments yet (chase/extract.js makes them).';return;}
  M.d=d;M.i=d.i;mv.setMap(d.map.tiles,d.tile,d.spot,null);$('mNum').textContent=(d.i+1)+' of '+d.count;
+ if(d.grab){$('mInfo').textContent=d.mapName+' · you ('+(d.me.team===1?'red':'blue')+') just grabbed their flag; you start behind it, '+d.routeTiles+' tiles from home by route · both chasers start still, '+d.ahead+' tiles ahead on your route home';restartChaseMe();return;}
  const m=Math.floor(d.t0/60000),sec=Math.floor(d.t0/1000)%60,R={returned:'returned it',cap:'the carrier capped','still held':'the carrier still held it after 8 s','returned by someone else':'a teammate returned it'};
  $('mInfo').innerHTML=d.mapName+', '+m+':'+String(sec).padStart(2,'0')+' into a ranked game · you are '+d.me.name+'\'s ball · chasers start where '+d.chasers[0].name+' and '+d.chasers[1].name+' were · '+
   'really: '+d.chasers[0].name+' '+(R[d.real.outcome]||d.real.outcome)+(d.real.ms!=null?' at '+(d.real.ms/1000).toFixed(2)+' s':'');
@@ -512,9 +541,10 @@ async function loadChaseMe(step){
 function restartChaseMe(){
  const d=M.d;if(!d)return;M.sim=new BSim(JSON.parse(JSON.stringify(d.map)));
  M.p=M.sim.addBall(d.me.team);M.sim.place(M.p,d.me.x,d.me.y,d.me.vx,d.me.vy);
+ if(d.grab){M.sim.grabFlag(M.p,3-d.me.team);M.p.invincibleUntil=0;} // grab start: you hold their flag in the engine too
  M.ch=d.chasers.map(c=>{const p=M.sim.addBall(c.team);M.sim.place(p,c.x,c.y,c.vx,c.vy);return{p,F:null,Ft:0,solo:null};});
  M.hist=[{x:d.me.x,y:d.me.y,vx:d.me.vx,vy:d.me.vy}];
- M.t=0;M.acc=0;M.state='count';M.countEnd=performance.now()+1500;$('card').style.display='none';}
+ M.Fc=null;M.t=0;M.acc=0;M.state='count';M.countEnd=performance.now()+1500;$('card').style.display='none';}
 function finishChaseMe(res){
  M.state='done';const d=M.d,s=(M.t/60).toFixed(2);
  fetch('chaseme',{method:'POST',body:JSON.stringify({id:d.id,result:res,ticks:M.t})}).catch(()=>{});
@@ -525,21 +555,22 @@ function stepChaseMe(dt){
  while(M.acc>=1&&n<5){M.acc--;n++;
   setKeys(M.p,action());
   {const q=M.p.body.GetPosition(),v=M.p.body.GetLinearVelocity();M.hist.push({x:q.x,y:q.y,vx:v.x,vy:v.y});if(M.hist.length>60)M.hist.shift();}
-  if($('mMode').value==='contain'){const k=mContain();for(const c of M.ch)if(!c.p.dead)setKeys(c.p,k.has(c)?k.get(c):0);}
+  if($('mMode').value==='contain'||$('mMode').value==='nets'){const k=$('mMode').value==='nets'?mNets():mContain();for(const c of M.ch)if(!c.p.dead)setKeys(c.p,k.has(c)?k.get(c):0);}
   else for(const c of M.ch)if(!c.p.dead)setKeys(c.p,mSteer(c));
   M.sim.tickOnce();M.t++;
   const me=M.p.body.GetPosition();
-  if(M.p.dead){finishChaseMe('popped');break;}
+  if(M.p.dead){finishChaseMe(M.ch.some(c=>!c.p.dead&&Math.hypot(c.p.body.GetPosition().x-me.x,c.p.body.GetPosition().y-me.y)<TOUCH2+.05)?'returned':'popped');break;}
   if(M.ch.some(c=>!c.p.dead&&Math.hypot(c.p.body.GetPosition().x-me.x,c.p.body.GetPosition().y-me.y)<TOUCH2)){finishChaseMe('returned');break;}
   if(Math.hypot(me.x-M.d.spot.x,me.y-M.d.spot.y)<TOUCH2){finishChaseMe('capped');break;}}
  if(M.acc>5)M.acc=0;}
 function drawChaseMe(){
  if(!M.d||!M.sim)return;mv.base();const tc=['','#ff4a4a','#4a9bff'];
- M.ch.forEach((c,j)=>{if(c.p.dead)return;const q=c.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.chasers[j].team],1,0,c.solo?'solo!':'chaser');});
+ M.ch.forEach((c,j)=>{if(c.p.dead)return;const q=c.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.chasers[j].team],1,0,c.solo?'solo!':($('mMode').value==='nets'&&c.role)||'chaser');});
  const q=M.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.me.team],1,action(),'you');
  const g=mv.g;g.strokeStyle='#fff';g.lineWidth=Math.max(2,mv.px/10);g.beginPath();g.arc(mv.P(q.x),mv.P(q.y),mv.px*.68,0,7);g.stroke();g.fillStyle='#fff';g.font='bold '+Math.max(11,mv.px/2)+'px sans-serif';g.fillText('⚑',mv.P(q.x)-mv.px*.25,mv.P(q.y)+mv.px*.2);
  $('mTime').textContent=(M.t/60).toFixed(2)+' s';}
 $('mMode').onchange=()=>{$('mMode').blur();restartChaseMe();};
+$('mStart').onchange=()=>{$('mStart').blur();M.i=0;loadChaseMe();};
 addEventListener('keydown',e=>{if(tab!=='chaseme')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
  if(e.code==='KeyR'&&M.d)restartChaseMe();if(e.code==='KeyN')loadChaseMe(1);if(e.code==='KeyB')loadChaseMe(-1);});
 
