@@ -28,7 +28,7 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 <script src="engine/box2d.js"></script><script src="engine/constants.js"></script><script src="engine/game.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head><body>
-<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="chases">Chases</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
+<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="chases">Chases</button><button data-t="pinches">Pinches</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
 
 <div id="play" class="tab on">
  <div class="hud">
@@ -63,8 +63,17 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
   <span>Moment <b id="mNum" class="big">–</b></span><span class="big" id="mTime">0.00 s</span>
   <span class="dim">You carry the flag: get to your flag (<span style="color:#3f3">green cross</span>) without being touched · arrows or WASD · R restart · N next · B back</span>
  </div>
- <div class="hud" style="padding-top:0"><span id="mInfo"></span></div>
+ <div class="hud" style="padding-top:0"><select id="mMode"><option value="contain" selected>Chasers contain (cutter + presser, solo only when it can't miss)</option><option value="charge">Chasers charge (aim where you're heading)</option></select><span id="mInfo"></span></div>
  <canvas id="mc" class="map"></canvas>
+</div>
+
+<div id="pinches" class="tab">
+ <div class="hud">
+  <span>Map <b id="kNum" class="big">–</b></span><b id="kName" style="font-size:18px;color:#fff"></b>
+  <button class="btn2" id="kPrev">◀ Back</button><button class="btn2" id="kNext">Next ▶</button>
+  <span class="dim">Orange lines are the pinches the finder picked (number = width in tiles). Click a pinch to cycle: <span style="color:#f55">wrong</span> → <span style="color:#5f5">right</span> → unmarked.</span>
+ </div>
+ <canvas id="kc" class="map"></canvas>
 </div>
 
 <div id="chases" class="tab">
@@ -198,7 +207,7 @@ let tab='play';
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
  tab=b.dataset.t;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));$(tab==='graphs'?'graphs-tab':tab).classList.add('on');
- if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='chaseme'&&!M.d)loadChaseMe(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
+ if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='chaseme'&&!M.d)loadChaseMe(); if(tab==='pinches'&&!K.d)loadPinches(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
 });
 
 // ---------- play ----------
@@ -395,6 +404,86 @@ function mSteer(c){ // one chaser's keys this tick
  const L=Math.hypot(wx-q.x,wy-q.y)||1,ex=(wx-q.x)/L*2.5-w.x,ey=(wy-q.y)/L*2.5-w.y;
  const ax=Math.abs(ex)<.1?0:Math.sign(ex),ay=Math.abs(ey)<.1?0:Math.sign(ey);
  return ACTIONS.findIndex(([a,b])=>a===ax&&b===ay);}
+
+// ---------- containing chasers ----------
+// Chasers see you as you were REACT ticks ago (people's reaction time), so coming in fast and getting juked sends them
+// past you. Each moment one chaser is the presser (the one you're moving away from: closes in behind you, matching your
+// speed) and the other the cutter (stands ahead/beside you where it leaves you the least room to escape: rays to the
+// walls in 16 directions, room towards your flag and along your momentum counting extra; a gap of under ~2 tiles
+// against a wall leaves almost no room, so it gets "given up"). A chaser only goes for the tag (solo) when holding one
+// key direction touches you whatever you do after your own reaction: keep going, brake, or dodge either way (walls
+// limit the dodge); then it holds that key until it touches or passes.
+const REACT=12,CUSHION=0.7,SOLO_TICKS=60,DT=1/60,DAMP=1-0.5/60,ACC=0.025,MS=2.5;
+const mWall=(x,y)=>{const t=M.sim.tiles,tx=Math.round(x/T_),ty=Math.round(y/T_);if(tx<0||ty<0||tx>=t.length||ty>=t[0].length)return true;return mBlocked(t[tx][ty]);};
+function mRay(x,y,dx,dy,max,obst){ // free distance from (x, y) along (dx, dy), stopped by walls, spikes and obstacle points
+ for(let d=0.1;d<=max;d+=0.1){const px=x+dx*d,py=y+dy*d;if(mWall(px,py))return d-0.1;for(const o of obst)if(Math.hypot(px-o[0],py-o[1])<0.6)return d-0.1;}return max;}
+function mEscape(fc,obst){ // how much room the carrier has, weighted towards its flag and along its momentum
+ const sp=Math.hypot(fc.vx,fc.vy),gx=M.d.spot.x-fc.x,gy=M.d.spot.y-fc.y,gl=Math.hypot(gx,gy)||1;let e=0;
+ for(let i=0;i<16;i++){const a=i*Math.PI/8,dx=Math.cos(a),dy=Math.sin(a);
+  const w=(1+.8*Math.max(0,(dx*gx+dy*gy)/gl))*(1+.5*(sp>.3?Math.max(0,(dx*fc.vx+dy*fc.vy)/sp):0));e+=w*mRay(fc.x,fc.y,dx,dy,3,obst);}
+ return e;}
+function mKin(x,y,vx,vy,a){ // one tick of a ball holding key direction a (engine-like: drag, then push under top speed)
+ vx*=DAMP;vy*=DAMP;const[ax,ay]=ACTIONS[a];
+ if(ax>0&&vx<MS)vx+=ACC;if(ax<0&&vx>-MS)vx-=ACC;if(ay>0&&vy<MS)vy+=ACC;if(ay<0&&vy>-MS)vy-=ACC;return[x+vx*DT,y+vy*DT,vx,vy];}
+const dirKey=(dx,dy)=>{const ax=Math.abs(dx)<.38*Math.hypot(dx,dy)?0:Math.sign(dx),ay=Math.abs(dy)<.38*Math.hypot(dx,dy)?0:Math.sign(dy);return ACTIONS.findIndex(([a,b])=>a===ax&&b===ay);};
+function mSoloKey(c,fc){ // a key direction that touches the carrier whatever it does, or -1
+ const q=c.p.body.GetPosition(),w=c.p.body.GetLinearVelocity();let best=-1,bestT=Infinity;
+ const ux0=fc.x-q.x,uy0=fc.y-q.y,ul=Math.hypot(ux0,uy0)||1;
+ const plans=[[fc.vx,fc.vy],[-fc.vx,-fc.vy],[-uy0/ul,ux0/ul],[uy0/ul,-ux0/ul]]; // keep going, brake, dodge left, dodge right
+ for(let a=1;a<=8;a++){let worst=0;
+  for(const[px,py]of plans){const fa=Math.hypot(px,py)<.05?0:dirKey(px,py);let cx=q.x,cy=q.y,cvx=w.x,cvy=w.y,fx=fc.x,fy=fc.y,fvx=fc.vx,fvy=fc.vy,hit=Infinity;
+   for(let t=1;t<=SOLO_TICKS;t++){[cx,cy,cvx,cvy]=mKin(cx,cy,cvx,cvy,a);if(mWall(cx,cy))break;
+    let nf=mKin(fx,fy,fvx,fvy,t<=REACT?dirKey(fvx,fvy)<0?0:dirKey(fvx,fvy):fa<0?0:fa);if(mWall(nf[0],nf[1])){nf=[fx,fy,0,0];}[fx,fy,fvx,fvy]=nf;
+    if(Math.hypot(cx-fx,cy-fy)<TOUCH2){hit=t;break;}}
+   worst=Math.max(worst,hit);if(worst===Infinity)break;}
+  if(worst<bestT){bestT=worst;best=a;}}
+ return bestT<=SOLO_TICKS?{a:best,t:bestT}:null;}
+function mGoTo(c,tx,ty,fc){ // to a spot moving with the carrier: match its velocity, pulled onto the spot; route round walls
+ const q=c.p.body.GetPosition(),w=c.p.body.GetLinearVelocity();let wx=tx,wy=ty;
+ if(!mClear(M.sim.tiles,q.x,q.y,tx,ty)){
+  if(!c.F||M.t-c.Ft>=12){c.F=mField(M.sim.tiles,Math.round(tx/T_),Math.round(ty/T_));c.Ft=M.t;}
+  const cx=Math.round(q.x/T_),cy=Math.round(q.y/T_);let best=Infinity;
+  for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){const u=cx+a,v=cy+b;if(u<0||v<0||u>=c.F.W||v>=c.F.H)continue;const dv=c.F.d[u*c.F.H+v];if(dv===Infinity)continue;
+   const cc=dv+Math.hypot(q.x-u*T_,q.y-v*T_);if(cc<best&&mClear(M.sim.tiles,q.x,q.y,u*T_,v*T_)){best=cc;wx=u*T_;wy=v*T_;}}
+  const L=Math.hypot(wx-q.x,wy-q.y)||1;return dirKey((wx-q.x)/L*MS-w.x,(wy-q.y)/L*MS-w.y);}
+ let vx=fc.vx+3*(tx-q.x),vy=fc.vy+3*(ty-q.y);const V=Math.hypot(vx,vy);if(V>2.7){vx*=2.7/V;vy*=2.7/V;}
+ const ex=vx-w.x,ey=vy-w.y;return ACTIONS.findIndex(([a,b])=>a===(Math.abs(ex)<.1?0:Math.sign(ex))&&b===(Math.abs(ey)<.1?0:Math.sign(ey)));}
+function mContain(){ // keys for both chasers this tick
+ const h=M.hist,fc=h[Math.max(0,h.length-1-REACT)],live=M.ch.filter(c=>!c.p.dead),keys=new Map();
+ // a chaser already committed to a solo holds its key
+ for(const c of live){if(c.solo&&M.t<c.solo.until){keys.set(c,c.solo.a);continue;}c.solo=null;
+  if(M.t%4===0){const s=mSoloKey(c,fc);if(s){c.solo={a:s.a,until:M.t+s.t+10};keys.set(c,s.a);}}}
+ const free=live.filter(c=>!keys.has(c));if(!free.length)return keys;
+ const sp=Math.hypot(fc.vx,fc.vy);
+ // presser: the one the carrier is moving away from (or the closest when it is slow)
+ const behind=c=>{const q=c.p.body.GetPosition(),dx=q.x-fc.x,dy=q.y-fc.y,l=Math.hypot(dx,dy)||1;return sp>.5?(dx*fc.vx+dy*fc.vy)/l/sp:l/10;};
+ const ordered=live.slice().sort((a,b)=>behind(a)-behind(b)),presser=ordered[0],cutter=ordered[1];
+ if(presser&&free.includes(presser)){const ux=sp>.3?fc.vx/sp:0,uy=sp>.3?fc.vy/sp:0;let px=fc.x-ux*CUSHION,py=fc.y-uy*CUSHION;
+  if(sp<=.3){const q=presser.p.body.GetPosition(),dx=q.x-fc.x,dy=q.y-fc.y,l=Math.hypot(dx,dy)||1;px=fc.x+dx/l*CUSHION;py=fc.y+dy/l*CUSHION;}
+  keys.set(presser,mGoTo(presser,px,py,fc));}
+ if(cutter&&free.includes(cutter)){const q=cutter.p.body.GetPosition(),pq=presser.p.body.GetPosition();
+  const hx=sp>.3?fc.vx/sp:(M.d.spot.x-fc.x)/(Math.hypot(M.d.spot.x-fc.x,M.d.spot.y-fc.y)||1),hy=sp>.3?fc.vy/sp:(M.d.spot.y-fc.y)/(Math.hypot(M.d.spot.x-fc.x,M.d.spot.y-fc.y)||1);
+  let best=null,bs=Infinity;const h0=Math.atan2(hy,hx);
+  for(const r of[.8,1.2])for(let k=-5;k<=5;k++){const a=h0+k*Math.PI/8,x=fc.x+Math.cos(a)*r,y=fc.y+Math.sin(a)*r;
+   if(mWall(x,y)||!mClear(M.sim.tiles,fc.x,fc.y,x,y))continue;const sc=mEscape(fc,[[x,y],[pq.x,pq.y]])+2*Math.hypot(x-q.x,y-q.y);if(sc<bs){bs=sc;best=[x,y];}}
+  keys.set(cutter,best?mGoTo(cutter,best[0],best[1],fc):mSteer(cutter));}
+ return keys;}
+
+
+// ---------- pinches: the finder's pinch points on each map, for judging ----------
+const kv=new View($('kc')),K={d:null,i:0};
+async function loadPinches(step){if(step)K.i+=step;const d=await (await fetch('pinches?i='+K.i)).json();K.d=d;K.i=d.i;
+ kv.setMap(d.tiles,d.tile,{x:-99,y:-99},null);$('kNum').textContent=(d.i+1)+' of '+d.count;$('kName').textContent=d.name+' ('+d.pinches.length+' pinches)';drawPinches();}
+function drawPinches(){const d=K.d;if(!d)return;kv.base();const g=kv.g,px=kv.px,C2=t=>(t+.5)*px;
+ d.pinches.forEach((p,n)=>{const m=d.marks[n],col=m==='bad'?'#f55':m==='good'?'#5f5':'#ff9a2a';g.strokeStyle=col;g.lineWidth=Math.max(3,px/5);g.globalAlpha=.9;
+  g.beginPath();g.moveTo(C2(p.a[0]),C2(p.a[1]));g.lineTo(C2(p.b[0]),C2(p.b[1]));g.stroke();g.globalAlpha=1;
+  g.fillStyle=col;g.font='bold '+Math.max(11,px/2.2)+'px sans-serif';g.fillText(String(p.width),(C2(p.a[0])+C2(p.b[0]))/2+4,(C2(p.a[1])+C2(p.b[1]))/2-4);});}
+$('kPrev').onclick=()=>loadPinches(-1);$('kNext').onclick=()=>loadPinches(1);
+$('kc').onclick=async(e)=>{const d=K.d;if(!d)return;const r=$('kc').getBoundingClientRect(),x=(e.clientX-r.left)*$('kc').width/r.width,y=(e.clientY-r.top)*$('kc').height/r.height,px=kv.px,C2=t=>(t+.5)*px;
+ let best=-1,bd=px;d.pinches.forEach((p,n)=>{const ax=C2(p.a[0]),ay=C2(p.a[1]),bx=C2(p.b[0]),by=C2(p.b[1]),L2=(bx-ax)**2+(by-ay)**2||1,u=Math.max(0,Math.min(1,((x-ax)*(bx-ax)+(y-ay)*(by-ay))/L2)),dd=Math.hypot(ax+u*(bx-ax)-x,ay+u*(by-ay)-y);if(dd<bd){bd=dd;best=n;}});
+ if(best<0)return;const cur=d.marks[best],next=cur==null?'bad':cur==='bad'?'good':null;if(next)d.marks[best]=next;else delete d.marks[best];drawPinches();
+ fetch('pinches',{method:'POST',body:JSON.stringify({key:d.key,n:best,mark:next})}).catch(()=>{});};
+
 async function loadChaseMe(step){
  if(step)M.i+=step;M.state='load';
  const d=await (await fetch('chaseme?i='+M.i)).json();
@@ -407,7 +496,8 @@ async function loadChaseMe(step){
 function restartChaseMe(){
  const d=M.d;if(!d)return;M.sim=new BSim(JSON.parse(JSON.stringify(d.map)));
  M.p=M.sim.addBall(d.me.team);M.sim.place(M.p,d.me.x,d.me.y,d.me.vx,d.me.vy);
- M.ch=d.chasers.map(c=>{const p=M.sim.addBall(c.team);M.sim.place(p,c.x,c.y,c.vx,c.vy);return{p,F:null,Ft:0};});
+ M.ch=d.chasers.map(c=>{const p=M.sim.addBall(c.team);M.sim.place(p,c.x,c.y,c.vx,c.vy);return{p,F:null,Ft:0,solo:null};});
+ M.hist=[{x:d.me.x,y:d.me.y,vx:d.me.vx,vy:d.me.vy}];
  M.t=0;M.acc=0;M.state='count';M.countEnd=performance.now()+1500;$('card').style.display='none';}
 function finishChaseMe(res){
  M.state='done';const d=M.d,s=(M.t/60).toFixed(2);
@@ -417,7 +507,10 @@ function stepChaseMe(dt){
  if(M.state==='count'){const left=M.countEnd-performance.now();$('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/500);if(left<=0){M.state='run';M.acc=0;}return;}
  if(M.state!=='run')return;M.acc+=dt*60;let n=0;
  while(M.acc>=1&&n<5){M.acc--;n++;
-  setKeys(M.p,action());for(const c of M.ch)if(!c.p.dead)setKeys(c.p,mSteer(c));
+  setKeys(M.p,action());
+  {const q=M.p.body.GetPosition(),v=M.p.body.GetLinearVelocity();M.hist.push({x:q.x,y:q.y,vx:v.x,vy:v.y});if(M.hist.length>60)M.hist.shift();}
+  if($('mMode').value==='contain'){const k=mContain();for(const c of M.ch)if(!c.p.dead)setKeys(c.p,k.has(c)?k.get(c):0);}
+  else for(const c of M.ch)if(!c.p.dead)setKeys(c.p,mSteer(c));
   M.sim.tickOnce();M.t++;
   const me=M.p.body.GetPosition();
   if(M.p.dead){finishChaseMe('popped');break;}
@@ -426,10 +519,11 @@ function stepChaseMe(dt){
  if(M.acc>5)M.acc=0;}
 function drawChaseMe(){
  if(!M.d||!M.sim)return;mv.base();const tc=['','#ff4a4a','#4a9bff'];
- M.ch.forEach((c,j)=>{if(c.p.dead)return;const q=c.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.chasers[j].team],1,0,'chaser');});
+ M.ch.forEach((c,j)=>{if(c.p.dead)return;const q=c.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.chasers[j].team],1,0,c.solo?'solo!':'chaser');});
  const q=M.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.me.team],1,action(),'you');
  const g=mv.g;g.strokeStyle='#fff';g.lineWidth=Math.max(2,mv.px/10);g.beginPath();g.arc(mv.P(q.x),mv.P(q.y),mv.px*.68,0,7);g.stroke();g.fillStyle='#fff';g.font='bold '+Math.max(11,mv.px/2)+'px sans-serif';g.fillText('⚑',mv.P(q.x)-mv.px*.25,mv.P(q.y)+mv.px*.2);
  $('mTime').textContent=(M.t/60).toFixed(2)+' s';}
+$('mMode').onchange=()=>{$('mMode').blur();restartChaseMe();};
 addEventListener('keydown',e=>{if(tab!=='chaseme')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
  if(e.code==='KeyR'&&M.d)restartChaseMe();if(e.code==='KeyN')loadChaseMe(1);if(e.code==='KeyB')loadChaseMe(-1);});
 
@@ -612,6 +706,6 @@ function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
  if(tab==='chases'){stepChase(dt);drawChase();}
  if(tab==='chaseme'){stepChaseMe(dt);drawChaseMe();}
  requestAnimationFrame(frame);}
-addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();if(CH.d)cv_.layout();if(M.d)mv.layout();});
+addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();if(CH.d)cv_.layout();if(M.d)mv.layout();if(K.d){kv.layout();drawPinches();}});
 pickers();newPuzzle();requestAnimationFrame(frame);
 </script></body></html>

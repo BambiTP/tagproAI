@@ -458,6 +458,23 @@ addEventListener('dragover',(e)=>e.preventDefault());addEventListener('drop',(e)
         fs.writeFileSync(path.join(dir, name), Buffer.concat(chunks)); send(res, 200, { saved: 'runs/uploads/' + name }); });
       return;
     }
+    // pinch points (chase/pinches.js) for judging: map tiles, the pinches, and the user's marks (runs/pinch-marks.json)
+    if (u.pathname === '/pinches' && req.method === 'GET') {
+      const all = JSON.parse(fs.readFileSync(path.join(__dirname, 'chase', 'pinches.json'), 'utf8')), keys = Object.keys(all);
+      const i = ((parseInt(u.searchParams.get('i'), 10) || 0) % keys.length + keys.length) % keys.length, key = keys[i];
+      const mf = path.join(__dirname, 'runs', 'pinch-marks.json'), marks = fs.existsSync(mf) ? JSON.parse(fs.readFileSync(mf, 'utf8')) : {};
+      return send(res, 200, { i, count: keys.length, key, name: all[key].name, tiles: getMap(key).tiles, tile: N.TILE, pinches: all[key].pinches, marks: marks[key] || {} });
+    }
+    if (u.pathname === '/pinches' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 2e3) req.destroy(); });
+      req.on('end', () => { try { const r = JSON.parse(body);
+        if (!/^[\w-]{1,60}$/.test(r.key) || !Number.isInteger(r.n) || !['bad', 'good', 'missing', null].includes(r.mark)) throw new Error('bad');
+        const mf = path.join(__dirname, 'runs', 'pinch-marks.json'), marks = fs.existsSync(mf) ? JSON.parse(fs.readFileSync(mf, 'utf8')) : {};
+        marks[r.key] = marks[r.key] || {}; if (r.mark) marks[r.key][r.n] = r.mark; else delete marks[r.key][r.n];
+        fs.writeFileSync(mf, JSON.stringify(marks)); send(res, 200, { ok: true }); } catch (e) { send(res, 400, { error: 'bad' }); } });
+      return;
+    }
     if (u.pathname === '/chaseme' && req.method === 'GET') return send(res, 200, chaseMe(parseInt(u.searchParams.get('i'), 10) || 0));
     if (u.pathname === '/chaseme' && req.method === 'POST') {
       let body = '';
