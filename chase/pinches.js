@@ -5,6 +5,7 @@
 // above and a wall just to the left), and also along both diagonals that run beside those walls (up-right and
 // down-left for that example): a carrier there cannot keep going any of those ways. Beside a slanted (45 degree) wall
 // one of those diagonals is a long free run, so slanted walls do not count. dirs names the two blocked directions.
+// Names (the user's): pinches are "safety nets" (chasers fall back to them), dead-end lanes are "kill points".
 // Dead-end lanes: a strip along a wall that ends where a wall juts in across it. A carrier running along the wall gets
 // boxed in, so a chaser only has to hold one line parallel to the wall (depth tiles out from it) back from the jut.
 // lanes: [{ from, to, depth, guard: [a, b] }] (tile coordinates; from -> to runs along the wall into the dead end).

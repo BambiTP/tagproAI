@@ -28,7 +28,7 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 <script src="engine/box2d.js"></script><script src="engine/constants.js"></script><script src="engine/game.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head><body>
-<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="chases">Chases</button><button data-t="pinches">Pinches</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
+<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="chases">Chases</button><button data-t="pinches">Kill points</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
 
 <div id="play" class="tab on">
  <div class="hud">
@@ -71,8 +71,8 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
  <div class="hud">
   <span>Map <b id="kNum" class="big">–</b></span><b id="kName" style="font-size:18px;color:#fff"></b>
   <button class="btn2" id="kPrev">◀ Back</button><button class="btn2" id="kNext">Next ▶</button>
-  <label><input type="checkbox" id="kShowP" checked> choke points</label><label><input type="checkbox" id="kShowL" checked> dead-end lanes</label>
-  <span class="dim"><span style="color:#ff9a2a">Orange lines</span> = choke points (number = width in tiles; past the line the space opens up). <span style="color:#4dd">Cyan arrows</span> = dead-end lanes (run along the wall into a jut; the <span style="color:#f55">red line</span> is the line a chaser holds to box the carrier in). Click a line to cycle <span style="color:#f55">wrong</span> → <span style="color:#5f5">right</span> → unmarked.</span>
+  <label><input type="checkbox" id="kShowP" checked> safety nets</label><label><input type="checkbox" id="kShowL" checked> kill points</label>
+  <span class="dim"><span style="color:#ff9a2a">Orange lines</span> = safety nets (choke points: number = width in tiles; past the line the space opens up, so chasers fall back here when they can't contain). <span style="color:#4dd">Cyan arrows</span> = kill points (lanes along a wall into a jut; the <span style="color:#f55">red line</span> is the line a chaser holds to box the carrier in). Click a line to cycle <span style="color:#f55">wrong</span> → <span style="color:#5f5">right</span> → unmarked.</span>
  </div>
  <canvas id="kc" class="map"></canvas>
 </div>
@@ -474,7 +474,7 @@ function mContain(){ // keys for both chasers this tick
 // ---------- pinches: the finder's pinch points on each map, for judging ----------
 const kv=new View($('kc')),K={d:null,i:0};
 async function loadPinches(step){if(step)K.i+=step;const d=await (await fetch('pinches?i='+K.i)).json();K.d=d;K.i=d.i;
- kv.setMap(d.tiles,d.tile,{x:-99,y:-99},null);$('kNum').textContent=(d.i+1)+' of '+d.count;$('kName').textContent=d.name+' ('+d.pinches.length+' pinches)';drawPinches();}
+ kv.setMap(d.tiles,d.tile,{x:-99,y:-99},null);$('kNum').textContent=(d.i+1)+' of '+d.count;$('kName').textContent=d.name+' ('+(d.lanes||[]).length+' kill points, '+d.pinches.length+' safety nets)';drawPinches();}
 function drawPinches(){const d=K.d;if(!d)return;kv.base();const g=kv.g,px=kv.px,C2=t=>(t+.5)*px;
  if($('kShowL').checked)for(const l of d.lanes||[]){const ax=C2(l.from[0]),ay=C2(l.from[1]),bx=C2(l.to[0]),by=C2(l.to[1]),L=Math.hypot(bx-ax,by-ay)||1,ux=(bx-ax)/L,uy=(by-ay)/L;
   g.strokeStyle='#4dd';g.fillStyle='#4dd';g.lineWidth=Math.max(2,px/8);g.beginPath();g.moveTo(ax,ay);g.lineTo(bx,by);g.stroke();
