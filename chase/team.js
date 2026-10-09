@@ -11,6 +11,13 @@
 //   lead    both chasers aim where the carrier will be from its actual velocity (not at its route home)
 //   rlead2  the puzzle's chaser leads the carrier; its teammate picks like rlead, but the carrier inside the
 //           simulations dodges (steers home blended with away from the nearest chaser within 2 m)
+//   contain containing chasers built on the map's kill points and safety nets (chase/pinches.json), each plan:
+//           1. a chaser with a certain kill (holding one key touches the carrier whatever it does after 100 ms, by the
+//              fast check with a 1 cm margin, chase/killtest.js) holds that key until it touches or misses
+//           2. the carrier running along a forward kill point: the chaser ahead holds a spot on the open side of the
+//              lane, level with the carrier, and lets it run into the bump; the other follows behind
+//           3. otherwise the chaser ahead goes to the next safety net on the carrier's route home and waits a tile
+//              short of it (or leads the carrier if there is none); the other follows behind at a cushion
 //   split   one of each: the puzzle's chaser aims at the carrier's route home, its teammate leads the carrier
 //   rlead   rollout with a better model inside the simulations: chasers aim where the carrier will be (not where it
 //           is), and a teammate that has reached its spot goes on to the carrier
@@ -48,10 +55,12 @@ const N = require('../nav');
 const F = require('../fastsearch');
 const { Sim, getMap } = require('../sim');
 const C = require('./run');
+const KT = require('./killtest');
+const SPOTS = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'pinches.json'), 'utf8')); } catch (e) { return {}; } })();
 
 const DIR = path.join(__dirname, 'scenarios'), RES = path.join(__dirname, 'results');
 const TOUCH = 2 * N.BALL_R + 0.005, CAP_R = 2 * N.BALL_R, TILE = N.TILE, LIMIT = 8 * 60;
-const PLANS_A = ['both', 'guard', 'rollout', 'rlead', 'lead', 'split', 'rlead2'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout', 'rollout2'];
+const PLANS_A = ['both', 'guard', 'rollout', 'rlead', 'lead', 'split', 'rlead2', 'contain'], PLANS_B = ['alone', 'block', 'bump', 'mark', 'smart', 'pair', 'lever', 'lever2', 'lever3', 'rollout', 'rollout2'];
 const tileOf = (v) => Math.round(v / TILE);
 // four balls each search, so narrower and shallower than one ball's search (TEAM_W, TEAM_D to change)
 // REACT=1: inside each ball's lookahead the other three steer by simple rules (chasers straight at the carrier, the
@@ -290,11 +299,72 @@ function game(s, planA, planB) {
     if (!best) return carrierTask;
     return { ...carrierTask, goal: { x: best[0], y: best[1] }, F: N.field(sim.tiles, tileOf(best[0]), tileOf(best[1])) };
   };
-  const roles = [[ch, () => intercept(ch)], [m2, () => (planA === 'guard' ? guard() : (planA === 'rollout' || planA === 'rlead' || planA === 'rlead2') ? matePick() : intercept(m2))], [ca, () => (planB === 'rollout2' ? carrierPick() : carrierTask)], [es, escortTask]];
+  // ---- contain (planA 'contain') ----
+  const mapSpots = SPOTS[s.key] || { pinches: [], lanes: [] }, solo = new Map(), CUSH = 0.8;
+  const killKey = (c) => { // a key that is a certain kill, or -1
+    const q = pos(c), w = vel(c), r = pos(ca), rv = vel(ca);
+    const st = { cx: q.x, cy: q.y, cvx: w.x, cvy: w.y, fx: r.x, fy: r.y, fvx: rv.x, fvy: rv.y };
+    let best = -1, bt = Infinity;
+    for (let k = 1; k <= 8; k++) { const f = KT.fast(st, k, 6, 0.375); if (f.worst < bt) { bt = f.worst; best = k; } }
+    return bt < Infinity ? { k: best, t: bt } : null;
+  };
+  const heading = () => { const r = pos(ca), v = vel(ca), sp = Math.hypot(v.x, v.y);
+    if (sp > 0.5) return [v.x / sp, v.y / sp];
+    const [dx, dy] = N.pathDir(Fc, r.x, r.y); return [dx, dy]; };
+  const onKillPoint = () => { // a forward kill point lane the carrier is running along, with the open side
+    const r = pos(ca), [hx, hy] = heading(), rt = [r.x / TILE, r.y / TILE];
+    for (const l of mapSpots.lanes) {
+      if (l.fwd && !l.fwd[s.carrier.team]) continue;
+      const ax = l.from[0], ay = l.from[1], bx = l.to[0], by = l.to[1], L = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / L, uy = (by - ay) / L;
+      if (ux * hx + uy * hy < 0.7) continue;
+      const t = ((rt[0] - ax) * ux + (rt[1] - ay) * uy); if (t < -1 || t > L) continue;
+      if (Math.abs((rt[0] - ax) * uy - (rt[1] - ay) * ux) > 1) continue;
+      // the open side: the perpendicular with floor (the wall is on the other side)
+      const p1 = [-uy, ux], wallSide = !Fc.ok[Math.round(bx + p1[0]) * Fc.H + Math.round(by + p1[1])] ? 1 : -1;
+      return { l, open: [-p1[0] * wallSide, -p1[1] * wallSide] };
+    }
+    return null;
+  };
+  const nextNet = () => { // the nearest safety net ahead on the carrier's route home (route distance smaller than the carrier's)
+    const r = pos(ca), dr = N.fieldAt(Fc, r.x, r.y); let best = null, bd = Infinity;
+    for (const p of mapSpots.pinches) {
+      const mx = (p.a[0] + p.b[0]) / 2 * TILE, my = (p.a[1] + p.b[1]) / 2 * TILE, dm = N.fieldAt(Fc, mx, my);
+      if (!(dm < dr - 1)) continue; const d = Math.hypot(mx - r.x, my - r.y); if (d < bd) { bd = d; best = [mx, my]; }
+    }
+    return best;
+  };
+  const containTask = (c) => {
+    // 1. a certain kill: hold the key
+    const held = solo.get(c);
+    if (held && held.until > tick) return { direct: held.k };
+    const kk = killKey(c); if (kk) { solo.set(c, { k: kk.k, until: tick + kk.t + 6 }); return { direct: kk.k }; }
+    const r = pos(ca), live = chasers.filter(alive), [hx, hy] = heading();
+    // roles: the chaser furthest along the carrier's heading is ahead, the other follows
+    const ahead = live.reduce((a, b) => ((pos(a).x - r.x) * hx + (pos(a).y - r.y) * hy >= (pos(b).x - r.x) * hx + (pos(b).y - r.y) * hy ? a : b));
+    if (c !== ahead || live.length < 2) { // follow behind at a cushion
+      const tx = r.x - hx * CUSH, ty = r.y - hy * CUSH;
+      return ballTask(tx, ty, { doneAt: (x, y) => { const b = pos(ca); return Math.hypot(x - b.x, y - b.y) < TOUCH; } });
+    }
+    const kp = onKillPoint();
+    if (kp) { // 2. hold the open side of the lane, level with the carrier
+      const tx = r.x + kp.open[0] * (kp.l.off + 1.3) * TILE, ty = r.y + kp.open[1] * (kp.l.off + 1.3) * TILE;
+      if (Fc.ok[tileOf(tx) * Fc.H + tileOf(ty)]) return ballTask(tx, ty, { doneAt: () => false });
+    }
+    const net = nextNet();
+    if (net) { // 3. a tile short of the next safety net, on the carrier's side
+      const dx = r.x - net[0], dy = r.y - net[1], L = Math.hypot(dx, dy) || 1;
+      let tx = net[0] + dx / L * TILE, ty = net[1] + dy / L * TILE;
+      if (!Fc.ok[tileOf(tx) * Fc.H + tileOf(ty)]) { tx = net[0]; ty = net[1]; }
+      return ballTask(tx, ty, { doneAt: (x, y) => { const b = pos(ca); return Math.hypot(x - b.x, y - b.y) < TOUCH; } });
+    }
+    return intercept(c);
+  };
+  let tick = 0;
+  const roles = [[ch, () => (planA === 'contain' ? containTask(ch) : intercept(ch))], [m2, () => (planA === 'contain' ? containTask(m2) : planA === 'guard' ? guard() : (planA === 'rollout' || planA === 'rlead' || planA === 'rlead2') ? matePick() : intercept(m2))], [ca, () => (planB === 'rollout2' ? carrierPick() : carrierTask)], [es, escortTask]];
   let ms = 0;
   const trace = [];
   const done = (result, t) => ({ id: s.id, result, ticks: t, ms: Math.round(ms), mate: mate.id, escort: escort.id, path: trace });
-  for (let t = 0; t < LIMIT; t++) {
+  for (let t = 0; t < LIMIT; t++) { tick = t;
     if (t % N.K === 0) {
       sim.commit();
       const t0 = performance.now();
