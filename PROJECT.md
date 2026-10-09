@@ -178,6 +178,12 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   (51.7%; -9.2, se 3.6). Best so far: carrier side rollout2, chasing side lead. Round 21: rlead2 (leader + teammate
   choosing by simulation with a dodging carrier model) 48.3% vs 51.7%, no gain: stopped simulate-and-pick for chasers
   after three versions.
+- **Caveat on every duel / 2v2 result above:** 60% of chase puzzles (2,384 of 3,977) start with the carrier's OWN flag
+  taken, so in the real game it could not cap; the tests assumed the flag home. Comparisons between bots stay fair
+  (same puzzles), but caps are too easy. From here on, test on flag-home puzzles only (1,593).
+- Private page: **Chase me** tab: you carry the flag from a real flag-home moment (1,580), two chasers steered in the
+  browser (aim where you're heading, route round walls, avoid spikes; not the full search). Results in
+  runs/chaseme.jsonl.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 

@@ -325,6 +325,48 @@ function duelView(q) {
     bot: { result: r.result, ticks: r.ticks, path: r.path, team: pair.startsWith('team-') }, real: { outcome: s.outcome, ms: s.realMs, chaser: s.human, carrier: s.ghost } };
 }
 
+// ---------- chase me: you carry the flag from a real chase moment, two chasers come after you ----------
+// The chasers run in the browser (steered at where you're heading, around walls and spikes); the server only serves
+// the moment: the map with the replay's boosts, bombs and gates, your start (the real carrier's) and the chasers' (the
+// real chaser and its nearest teammate). Your results go to runs/chaseme.jsonl.
+const CHASE = require('./chase/run');
+let chaseIds = null;
+function chaseList() {
+  if (!chaseIds) {
+    const dir = path.join(__dirname, 'chase', 'scenarios');
+    // only moments where the carrier could really cap: its own flag at home, and it starts 5+ tiles from it
+    chaseIds = (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)).sort() : []).filter((id) => {
+      const s = JSON.parse(fs.readFileSync(path.join(dir, id + '.json'), 'utf8')), home = s.carrier.team === 1 ? 3 : 4;
+      for (let x = 0; x < s.tiles.length; x++) for (let y = 0; y < s.tiles[0].length; y++)
+        if (Math.floor(parseFloat(s.tiles[x][y])) === home) return String(s.tiles[x][y]) === String(home) && Math.hypot(s.ghost[0][0] - x * N.TILE, s.ghost[0][1] - y * N.TILE) >= 5 * N.TILE;
+      return false;
+    });
+    // a fixed shuffle so neighbouring moments aren't all from the same game
+    let h = 1; chaseIds = chaseIds.map((id) => [((h = (h * 1103515245 + 12345) >>> 0)), id]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+  }
+  return chaseIds;
+}
+function chaseMe(i) {
+  const ids = chaseList(); if (!ids.length) return { count: 0 };
+  for (let k = 0; k < ids.length; k++) {
+    const n = (((i + k) % ids.length) + ids.length) % ids.length, s = JSON.parse(fs.readFileSync(path.join(__dirname, 'chase', 'scenarios', ids[n] + '.json'), 'utf8'));
+    const g0 = s.ghost[0], g3 = s.ghost[Math.min(3, s.ghost.length - 1)], n3 = Math.min(3, s.ghost.length - 1) || 1;
+    const mates = s.others.filter((o) => o.team === s.chaserTeam);
+    const mate = mates.sort((a, b) => Math.hypot(a.x - g0[0], a.y - g0[1]) - Math.hypot(b.x - g0[0], b.y - g0[1]))[0];
+    const spot = CHASE.capSpot(s.tiles, s.carrier.team);
+    if (!mate || !spot) continue;
+    const map = JSON.parse(JSON.stringify(getMap(s.key)));
+    for (let x = 0; x < s.tiles.length; x++) for (let y = 0; y < s.tiles[0].length; y++) {
+      const v = s.tiles[x][y]; if (CHASE.COPY.has(CHASE.kind(v)) && String(v) !== String(map.tiles[x][y])) map.tiles[x][y] = typeof v === 'string' ? v : +v;
+    }
+    return { i: n, count: ids.length, id: s.id, mapName: s.map, t0: s.t0, map, tile: N.TILE, touchR: N.BALL_R,
+      me: { x: g0[0], y: g0[1], vx: (g3[0] - g0[0]) * 60 / n3, vy: (g3[1] - g0[1]) * 60 / n3, team: s.carrier.team, name: s.carrier.name },
+      chasers: [{ ...s.chaser, team: s.chaserTeam }, { x: mate.x, y: mate.y, vx: mate.vx, vy: mate.vy, name: mate.name, team: s.chaserTeam }],
+      spot: { x: spot[0] * N.TILE, y: spot[1] * N.TILE }, real: { outcome: s.outcome, ms: s.realMs } };
+  }
+  return { count: 0 };
+}
+
 // ---------- http ----------
 const send = (res, code, body, type = 'application/json') => {
   res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' });
@@ -394,6 +436,16 @@ http.createServer((req, res) => {
         you: human.best[s] || null, fast: x.fast || null, net: x.net || null, guided: x.guided || null, puzzleMode: modeOf(s) });
     }
     if (u.pathname === '/duels') return send(res, 200, duelView(u.searchParams));
+    if (u.pathname === '/chaseme' && req.method === 'GET') return send(res, 200, chaseMe(parseInt(u.searchParams.get('i'), 10) || 0));
+    if (u.pathname === '/chaseme' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 2e3) req.destroy(); });
+      req.on('end', () => { try { const r = JSON.parse(body);
+        if (typeof r.id !== 'string' || !/^[0-9a-f]{8}-\d+-\d+-\d+$/.test(r.id) || !['capped', 'returned', 'popped'].includes(r.result) || !Number.isInteger(r.ticks)) throw new Error('bad');
+        fs.appendFileSync(path.join(__dirname, 'runs', 'chaseme.jsonl'), JSON.stringify({ id: r.id, result: r.result, ticks: r.ticks, at: Date.now() }) + '\n');
+        send(res, 200, { ok: true }); } catch (e) { send(res, 400, { error: 'bad' }); } });
+      return;
+    }
     if (u.pathname === '/stats') return send(res, 200, stats());
     if (u.pathname === '/learning') return send(res, 200, learning());
     if (u.pathname === '/submit' && req.method === 'POST') {

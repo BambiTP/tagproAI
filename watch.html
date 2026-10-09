@@ -28,7 +28,7 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 <script src="engine/box2d.js"></script><script src="engine/constants.js"></script><script src="engine/game.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head><body>
-<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chases">Chases</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
+<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="chases">Chases</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
 
 <div id="play" class="tab on">
  <div class="hud">
@@ -56,6 +56,15 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
  <div class="hud" style="padding-top:0"><span id="wInfo"></span>
  </div>
  <canvas id="wc" class="map"></canvas>
+</div>
+
+<div id="chaseme" class="tab">
+ <div class="hud">
+  <span>Moment <b id="mNum" class="big">–</b></span><span class="big" id="mTime">0.00 s</span>
+  <span class="dim">You carry the flag: get to your flag (<span style="color:#3f3">green cross</span>) without being touched · arrows or WASD · R restart · N next · B back</span>
+ </div>
+ <div class="hud" style="padding-top:0"><span id="mInfo"></span></div>
+ <canvas id="mc" class="map"></canvas>
 </div>
 
 <div id="chases" class="tab">
@@ -189,7 +198,7 @@ let tab='play';
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
  tab=b.dataset.t;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));$(tab==='graphs'?'graphs-tab':tab).classList.add('on');
- if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
+ if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='chaseme'&&!M.d)loadChaseMe(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
 });
 
 // ---------- play ----------
@@ -352,6 +361,77 @@ function drawWatch(){
  $('wTime').textContent=(W.t/60).toFixed(2)+' s';
 }
 
+
+// ---------- chase me: you carry the flag, two chasers steer for where you're heading ----------
+// The chasers here are steered directly (not the full search used in the tests): each aims where you will be by the
+// time it gets there (your velocity, at most 1.5 s ahead), goes straight when the way is clear and otherwise follows
+// a route around walls, keeping off spikes.
+const mv=new View($('mc')),M={d:null,i:0,state:'load',t:0,acc:0};
+const T_=0.4,TOUCH2=0.385;
+const mBlocked=v=>{v=parseFloat(v);const f=Math.floor(v);return v===0||f===1||v===7||v===9.1||v===9.3;};
+function mField(tiles,gx,gy){ // route distance (m) to tile (gx, gy), spike neighbours cost extra
+ const W=tiles.length,H=tiles[0].length,d=new Float64Array(W*H).fill(Infinity),pen=new Float32Array(W*H);
+ for(let x=0;x<W;x++)for(let y=0;y<H;y++)if(parseFloat(tiles[x][y])===7)for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){const u=x+a,v=y+b;if(u>=0&&v>=0&&u<W&&v<H)pen[u*H+v]=.3;}
+ if(gx<0||gy<0||gx>=W||gy>=H)return{d,W,H};
+ const q=[[0,gx*H+gy]];d[gx*H+gy]=0;
+ while(q.length){let bi=0;for(let i=1;i<q.length;i++)if(q[i][0]<q[bi][0])bi=i;const[c,k]=q[bi];q[bi]=q[q.length-1];q.pop();if(c>d[k])continue;
+  const x=(k/H)|0,y=k-x*H;for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){if(!a&&!b)continue;const u=x+a,v=y+b;if(u<0||v<0||u>=W||v>=H)continue;
+   if(mBlocked(tiles[u][v])||(a&&b&&(mBlocked(tiles[u][y])||mBlocked(tiles[x][v]))))continue;const nc=c+T_*(a&&b?Math.SQRT2:1)+pen[u*H+v]*T_;
+   if(nc<d[u*H+v]){d[u*H+v]=nc;q.push([nc,u*H+v]);}}}
+ return{d,W,H};}
+function mClear(tiles,x0,y0,x1,y1){const L=Math.hypot(x1-x0,y1-y0),n=Math.max(1,Math.ceil(L/.08)),r=.185;
+ for(let i=0;i<=n;i++){const x=x0+(x1-x0)*i/n,y=y0+(y1-y0)*i/n;for(const[ox,oy]of[[-r,-r],[r,-r],[-r,r],[r,r],[0,0]]){const tx=Math.round((x+ox)/T_),ty=Math.round((y+oy)/T_);
+  if(tx<0||ty<0||tx>=tiles.length||ty>=tiles[0].length||mBlocked(tiles[tx][ty]))return false;}}return true;}
+function mSteer(c){ // one chaser's keys this tick
+ const tiles=M.sim.tiles,q=c.p.body.GetPosition(),w=c.p.body.GetLinearVelocity(),me=M.p.body.GetPosition(),mv_=M.p.body.GetLinearVelocity();
+ const dist=Math.hypot(me.x-q.x,me.y-q.y),tau=Math.min(1.5,dist/2.5);let tx=me.x+mv_.x*tau,ty=me.y+mv_.y*tau;
+ if(!mClear(tiles,me.x,me.y,tx,ty)){tx=me.x;ty=me.y;}
+ let wx=tx,wy=ty;
+ if(!mClear(tiles,q.x,q.y,tx,ty)){
+  if(!c.F||M.t-c.Ft>=12){c.F=mField(tiles,Math.round(tx/T_),Math.round(ty/T_));c.Ft=M.t;}
+  const cx=Math.round(q.x/T_),cy=Math.round(q.y/T_);let best=Infinity;
+  for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){const u=cx+a,v=cy+b;if(u<0||v<0||u>=c.F.W||v>=c.F.H)continue;const dv=c.F.d[u*c.F.H+v];if(dv===Infinity)continue;
+   const cc=dv+Math.hypot(q.x-u*T_,q.y-v*T_);if(cc<best&&mClear(tiles,q.x,q.y,u*T_,v*T_)){best=cc;wx=u*T_;wy=v*T_;}}}
+ const L=Math.hypot(wx-q.x,wy-q.y)||1,ex=(wx-q.x)/L*2.5-w.x,ey=(wy-q.y)/L*2.5-w.y;
+ const ax=Math.abs(ex)<.1?0:Math.sign(ex),ay=Math.abs(ey)<.1?0:Math.sign(ey);
+ return ACTIONS.findIndex(([a,b])=>a===ax&&b===ay);}
+async function loadChaseMe(step){
+ if(step)M.i+=step;M.state='load';
+ const d=await (await fetch('chaseme?i='+M.i)).json();
+ if(!d.count){$('mInfo').textContent='No chase moments yet (chase/extract.js makes them).';return;}
+ M.d=d;M.i=d.i;mv.setMap(d.map.tiles,d.tile,d.spot,null);$('mNum').textContent=(d.i+1)+' of '+d.count;
+ const m=Math.floor(d.t0/60000),sec=Math.floor(d.t0/1000)%60,R={returned:'returned it',cap:'the carrier capped','still held':'the carrier still held it after 8 s','returned by someone else':'a teammate returned it'};
+ $('mInfo').innerHTML=d.mapName+', '+m+':'+String(sec).padStart(2,'0')+' into a ranked game · you are '+d.me.name+'\'s ball · chasers start where '+d.chasers[0].name+' and '+d.chasers[1].name+' were · '+
+  'really: '+d.chasers[0].name+' '+(R[d.real.outcome]||d.real.outcome)+(d.real.ms!=null?' at '+(d.real.ms/1000).toFixed(2)+' s':'');
+ restartChaseMe();}
+function restartChaseMe(){
+ const d=M.d;if(!d)return;M.sim=new BSim(JSON.parse(JSON.stringify(d.map)));
+ M.p=M.sim.addBall(d.me.team);M.sim.place(M.p,d.me.x,d.me.y,d.me.vx,d.me.vy);
+ M.ch=d.chasers.map(c=>{const p=M.sim.addBall(c.team);M.sim.place(p,c.x,c.y,c.vx,c.vy);return{p,F:null,Ft:0};});
+ M.t=0;M.acc=0;M.state='count';M.countEnd=performance.now()+1500;$('card').style.display='none';}
+function finishChaseMe(res){
+ M.state='done';const d=M.d,s=(M.t/60).toFixed(2);
+ fetch('chaseme',{method:'POST',body:JSON.stringify({id:d.id,result:res,ticks:M.t})}).catch(()=>{});
+ const c=$('card');c.innerHTML='<h2>'+(res==='capped'?'Capped in '+s+' s':res==='returned'?'Returned at '+s+' s':'Popped at '+s+' s')+'</h2>R to try again · N for the next moment';c.style.display='block';}
+function stepChaseMe(dt){
+ if(M.state==='count'){const left=M.countEnd-performance.now();$('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/500);if(left<=0){M.state='run';M.acc=0;}return;}
+ if(M.state!=='run')return;M.acc+=dt*60;let n=0;
+ while(M.acc>=1&&n<5){M.acc--;n++;
+  setKeys(M.p,action());for(const c of M.ch)if(!c.p.dead)setKeys(c.p,mSteer(c));
+  M.sim.tickOnce();M.t++;
+  const me=M.p.body.GetPosition();
+  if(M.p.dead){finishChaseMe('popped');break;}
+  if(M.ch.some(c=>!c.p.dead&&Math.hypot(c.p.body.GetPosition().x-me.x,c.p.body.GetPosition().y-me.y)<TOUCH2)){finishChaseMe('returned');break;}
+  if(Math.hypot(me.x-M.d.spot.x,me.y-M.d.spot.y)<TOUCH2){finishChaseMe('capped');break;}}
+ if(M.acc>5)M.acc=0;}
+function drawChaseMe(){
+ if(!M.d||!M.sim)return;mv.base();const tc=['','#ff4a4a','#4a9bff'];
+ M.ch.forEach((c,j)=>{if(c.p.dead)return;const q=c.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.chasers[j].team],1,0,'chaser');});
+ const q=M.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.me.team],1,action(),'you');
+ const g=mv.g;g.strokeStyle='#fff';g.lineWidth=Math.max(2,mv.px/10);g.beginPath();g.arc(mv.P(q.x),mv.P(q.y),mv.px*.68,0,7);g.stroke();g.fillStyle='#fff';g.font='bold '+Math.max(11,mv.px/2)+'px sans-serif';g.fillText('⚑',mv.P(q.x)-mv.px*.25,mv.P(q.y)+mv.px*.2);
+ $('mTime').textContent=(M.t/60).toFixed(2)+' s';}
+addEventListener('keydown',e=>{if(tab!=='chaseme')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
+ if(e.code==='KeyR'&&M.d)restartChaseMe();if(e.code==='KeyN')loadChaseMe(1);if(e.code==='KeyB')loadChaseMe(-1);});
 
 // ---------- chases: one-against-one duels from chase/duel.js ----------
 // Bright balls are the bots (chaser and carrier, both played by the search); faint ones are the real players
@@ -530,7 +610,8 @@ function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
  if(tab==='play'){stepPlay(dt);drawPlay();}else $('count').style.display='none';
  if(tab==='watch'){stepWatch(dt);drawWatch();}
  if(tab==='chases'){stepChase(dt);drawChase();}
+ if(tab==='chaseme'){stepChaseMe(dt);drawChaseMe();}
  requestAnimationFrame(frame);}
-addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();if(CH.d)cv_.layout();});
+addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();if(CH.d)cv_.layout();if(M.d)mv.layout();});
 pickers();newPuzzle();requestAnimationFrame(frame);
 </script></body></html>
