@@ -181,6 +181,9 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
 - **Caveat on every duel / 2v2 result above:** 60% of chase puzzles (2,384 of 3,977) start with the carrier's OWN flag
   taken, so in the real game it could not cap; the tests assumed the flag home. Comparisons between bots stay fair
   (same puzzles), but caps are too easy. From here on, test on flag-home puzzles only (1,593).
+- **Flag-home rerun** (round 22, 105 flag-home puzzles x 3 nudges; `compare.js h`): plain interceptors vs plain carrier
+  61.9% returned; with the rollout blocker 61.6% (-0.3, se 1.7): **the rollout blocker's gain does not hold on
+  flag-home puzzles**; lead chasers 66.3% (+4.4, se 3.4, within chance). rollout2 / contain still running.
 - **Certain kills** (`chase/killtest.js grid`, `chase/killgridsummary.js`): furthest distance at which holding one key
   touches the carrier whatever it does, by engine, for chaser/carrier speeds 0-3 by 0.25, 16 directions each, carrier
   reaction 0/6/12 ticks (111,747 combinations, results/killgrid-*.csv). The fast check (motion maths, 1 cm margin) is
