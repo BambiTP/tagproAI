@@ -169,7 +169,9 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   Round 17: rollout2 (carrier also picks by rollout: home or 8 side-steps of 3 tiles): returned 21.3% vs 71.7%
   (saved 165 / cost 6); caps ~50% vs 28%, held 8 s far more often. Caveat: the chasers aim at the carrier's route
   home, which side-steps fool. Round 18 (rlead, rollout chaser with leading in the simulations): still worse than
-  plain interceptors so far (63.9% vs 68.6%).
+  plain interceptors: final 68.3% vs 71.7% (-3.5, se 1.9), same as rollout. Simulate-and-pick has not helped the
+  chasers in either form; two plain interceptors stay the best chasers. Round 19: lead chasers (aim from the
+  carrier's velocity) against a plain and a rollout2 carrier.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
