@@ -81,11 +81,14 @@ function cornersOf(tiles) {
   return out;
 }
 
-// Kill points (the user's definition): a flat stretch of wall that runs straight into an inward bump. From the bump
-// (a wall straight ahead of a ball sliding along the flat wall) back to where the flat wall starts (the wall stepping
-// away, or a corner). If the flat wall runs on for more than MAX_FLAT tiles without a bump it is not a kill point.
-// Straight walls and smooth 45 degree walls both count. lanes: [{ from, to }] = the flat stretch, running into the bump.
-const MAX_FLAT = 10, MIN_FLAT = 2;
+// Kill points: places where a chaser can stop containing and just let the carrier run into a wall (the user's
+// principle). A flat stretch of wall running straight into an inward bump, for a carrier running along it either
+// touching the wall (off = 0) or 1-2 tiles out from it (off = 1, 2), as long as the floor between carrier and wall is
+// open, the wall stays flat at that distance, and the bump ahead covers the whole strip between the carrier and the
+// wall (otherwise the carrier slips past along the wall). From the bump back to where the flat wall starts (the wall
+// steps away, or a corner); more than MAX_FLAT tiles without a bump is not a kill point. Straight and 45 degree walls.
+// lanes: [{ from, to, off }] = the run, into the bump.
+const MAX_FLAT = 10, MIN_FLAT = 2, MAX_OFF = 2;
 function lanesOf(tiles) {
   const W = tiles.length, H = tiles[0].length, open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
   const step = (x, y, dx, dy) => open(x + dx, y + dy) && (!dx || !dy || (open(x + dx, y) && open(x, y + dy)));
@@ -93,19 +96,27 @@ function lanesOf(tiles) {
   for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
     if (!open(x, y)) continue;
     for (const [nx, ny] of [[0, -1], [0, 1], [-1, 0], [1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) { // n: towards the flat wall
-      if (open(x + nx, y + ny)) continue;
-      for (const s of [1, -1]) {
-        const fx = -ny * s, fy = nx * s; // forward, along the wall
-        if (step(x, y, fx, fy)) continue; // no bump straight ahead: not the end of a kill point
-        // back along the flat wall until it stops being flat (the wall steps away) or the floor ends
-        let len = 0, ended = false;
-        for (;;) {
-          const bx = x - (len + 1) * fx, by = y - (len + 1) * fy;
-          if (!step(x - len * fx, y - len * fy, -fx, -fy) || open(bx + nx, by + ny)) { ended = true; break; }
-          len++; if (len > MAX_FLAT) break;
+      for (let off = 0; off <= MAX_OFF; off++) {
+        // the strip: open floor for `off` tiles towards the wall, then the wall
+        let strip = true; for (let k = 1; k <= off; k++) if (!open(x + k * nx, y + k * ny)) { strip = false; break; }
+        if (!strip || open(x + (off + 1) * nx, y + (off + 1) * ny)) continue;
+        for (const s of [1, -1]) {
+          const fx = -ny * s, fy = nx * s; // forward, along the wall
+          // the bump ahead covers the carrier's row and every row between it and the wall
+          let bump = true; for (let k = 0; k <= off; k++) if (step(x + k * nx, y + k * ny, fx, fy)) { bump = false; break; }
+          if (!bump) continue;
+          // back along the wall while it stays flat at this distance and the strip stays open
+          let len = 0, ended = false;
+          for (;;) {
+            const bx = x - (len + 1) * fx, by = y - (len + 1) * fy;
+            let ok = step(x - len * fx, y - len * fy, -fx, -fy);
+            for (let k = 1; ok && k <= off; k++) ok = open(bx + k * nx, by + k * ny);
+            if (!ok || open(bx + (off + 1) * nx, by + (off + 1) * ny)) { ended = true; break; }
+            len++; if (len > MAX_FLAT) break;
+          }
+          if (!ended || len < MIN_FLAT) continue;
+          lanes.push({ from: [x - len * fx, y - len * fy], to: [x, y], off });
         }
-        if (!ended || len < MIN_FLAT) continue; // too long without a bump, or too short to run along
-        lanes.push({ from: [x - len * fx, y - len * fy], to: [x, y] });
       }
     }
   }
