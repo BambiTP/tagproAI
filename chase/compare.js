@@ -6,7 +6,7 @@
 const fs = require('fs'), path = require('path');
 const RES = path.join(__dirname, 'results'), [tag, ...plans] = process.argv.slice(2);
 const get = (b) => { const o = {};
-  for (const f of fs.readdirSync(RES).filter((f) => new RegExp('^team-both-' + b + '-' + tag + '-?0(\\.\\d+)?\\.jsonl$').test(f))) {
+  for (const f of fs.readdirSync(RES).filter((f) => new RegExp('^team-' + (b.includes('-') ? b : 'both-' + b) + '-' + tag + '-?0(\\.\\d+)?\\.jsonl$').test(f))) {
     const j = f.match(new RegExp('-' + tag + '(-?0(\\.\\d+)?)\\.jsonl'))[1];
     for (const r of fs.readFileSync(path.join(RES, f), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))) o[r.id + '|' + j] = r; }
   return o; };
