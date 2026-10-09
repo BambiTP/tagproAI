@@ -158,7 +158,13 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   (already between, within 3 tiles of the line): round 12 52.9% vs 54.6% overall (-1.7, se 2.5); in games where it
   got leverage 42% vs 52% (saved 9, cost 2). Round 13 on 105 fresh puzzles x 3 nudges: 68.6% vs 71.7% returned
   (per puzzle -3.2, se 1.9; saved 18, cost 8; with leverage 48.8% vs 58.1%). **lever2 works** (both rounds: 27 saved
-  vs 10 cost, p < 0.01). Limit: leverage reached in only ~27% of games. Next: getting leverage more often.
+  vs 10 cost, p < 0.01). Limit: leverage reached in only ~27% of games. lever3 (get between when not on offer):
+  68.9%, saved 25 / cost 16, no better.
+- **Rollout blocker** (my own approach, no positioning rule; user asked me to use my own judgement, their ideas are
+  hypotheses): every plan simulate 12 candidate moves 1.5 s ahead with everyone on simple steering, pick the best for
+  the carrier. Round 15, fresh puzzles: 67.0% vs 71.7% returned, saved 21 / cost 6, per puzzle -4.8 (se 1.8): the best
+  blocker. `chase/compare.js f <plans>` compares plans on the fresh set. Round 16: rollout choice for the chaser's
+  teammate (`team.js rollout alone`).
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
