@@ -96,6 +96,27 @@ function grid(part = 0, parts = 1) {
   return n;
 }
 
+// a kill that holds against ANY carrier movement, not just held keys: the chaser holds key k (exact motion); the
+// carrier, from (fx, fy, fvx, fvy), can be anywhere its acceleration allows: each axis pushed at most ACC per tick
+// either way, so at tick t it is inside a square around where it would coast to, half-side ACC/60 * (pushes so far
+// summed). blind = ticks the carrier has already been free to push (the chaser's late view), react = ticks before it
+// can start. Certain if at some tick the whole square is within touching distance of the chaser. Returns that tick.
+function sure(s, k, react = 0, blind = 0, touch = TOUCH) {
+  let [cx, cy, cvx, cvy] = [s.cx, s.cy, s.cvx, s.cvy], [fx, fy, fvx, fvy] = [s.fx, s.fy, s.fvx, s.fvy];
+  let spread = 0, vspread = 0; // how far / how fast the carrier can be off its coasting path, per axis
+  for (let t = 0; t < blind; t++) { fvx *= DAMP; fvy *= DAMP; fx += fvx * DT; fy += fvy * DT; vspread = vspread * DAMP + ACC; spread += vspread * DT; }
+  for (let t = 1; t <= MAX_T; t++) {
+    [cx, cy, cvx, cvy] = kin(cx, cy, cvx, cvy, k);
+    fvx *= DAMP; fvy *= DAMP; fx += fvx * DT; fy += fvy * DT;
+    if (t > react) vspread = vspread * DAMP + ACC; else vspread *= DAMP;
+    spread += vspread * DT;
+    // the farthest corner of the square from the chaser
+    const dx = Math.abs(fx - cx) + spread, dy = Math.abs(fy - cy) + spread;
+    if (Math.hypot(dx, dy) < touch) return t;
+  }
+  return Infinity;
+}
+
 if (require.main === module && process.argv[2] === 'grid') {
   console.log(grid(+(process.argv[3] || 0), +(process.argv[4] || 1)), 'cases');
 } else if (require.main === module) {
@@ -120,4 +141,4 @@ if (require.main === module && process.argv[2] === 'grid') {
     if ((i + 1) % 1000 === 0) fs.writeFileSync(path.join(__dirname, 'results', 'killtest' + (process.env.TAG || '') + '-counts.json'), JSON.stringify({ samples: i + 1, counts }));
   }
 }
-module.exports = { exact, fast, arena, keyOf, grid };
+module.exports = { exact, fast, sure, arena, keyOf, grid };

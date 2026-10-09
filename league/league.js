@@ -6,6 +6,8 @@
 //   - every SNAP generations both networks are saved into the pool (the league) and tested against simple hand-made
 //     players: chasers that lead the carrier, and a carrier that runs at its goal and swerves from chasers within 2 m
 // Rewards: the carrier +1 for escaping (past both chasers), the chasers +1 for a return; the loser -1; a draw 0.
+// Chasers hold to kill (league/env.js): on a certain kill the key is held and the network overruled; those decisions
+// aren't learned from. The hand-made lead chasers hold to kill too.
 //   node league/league.js [generations]   (resumes from league/state/ if it is there)
 const fs = require('fs'), path = require('path');
 const { Net } = require('./nn');
@@ -33,7 +35,8 @@ function play(g, caPlayer, chPlayer, who) {
   while (!res) {
     const vc = g.view('ca'), v0 = g.view(0), v1 = g.view(1);
     const a = caPlayer(vc), b0 = chPlayer(v0, 0), b1 = chPlayer(v1, 1);
-    if (who === 'ca') rec.push({ x: vc, ...a }); else if (who === 'ch') rec.push([{ x: v0, ...b0 }, { x: v1, ...b1 }]);
+    // a chaser holding a kill is overruled, so that decision isn't the network's and isn't learned from
+    if (who === 'ca') rec.push({ x: vc, ...a }); else if (who === 'ch') rec.push([g.holding(0) ? null : { x: v0, ...b0 }, g.holding(1) ? null : { x: v1, ...b1 }]);
     res = g.step(a.a, [b0.a, b1.a]);
   }
   const r = res === 'escape' ? 1 : res === 'return' ? -1 : 0; // the carrier's result
@@ -76,7 +79,7 @@ for (let G = 0; G < gens; G++) {
     const chP = learnCa ? (x) => opp.net.act(x, rng) : (x) => chNet.act(x, rng);
     const r = play(game, caP, chP, learnCa ? 'ca' : 'ch');
     if (learnCa) { caBatch.push(...credit(r.rec, r.r)); out.ca[r.res] = (out.ca[r.res] || 0) + 1; }
-    else { chBatch.push(...credit(r.rec.map((s) => s[0]), -r.r), ...credit(r.rec.map((s) => s[1]), -r.r)); out.ch[r.res] = (out.ch[r.res] || 0) + 1; }
+    else { chBatch.push(...credit(r.rec.map((s) => s[0]).filter(Boolean), -r.r), ...credit(r.rec.map((s) => s[1]).filter(Boolean), -r.r)); out.ch[r.res] = (out.ch[r.res] || 0) + 1; }
     // the pool opponent's score: how well it does against the learner (decays towards the latest results)
     if (opp.i >= 0) { const p = st.pool[learnCa ? 'ch' : 'ca'][opp.i], won = learnCa ? (r.r < 0 ? 1 : 0) : (r.r > 0 ? 1 : 0); p.score = 0.9 * (p.score || 0.5) + 0.1 * won; }
   }
