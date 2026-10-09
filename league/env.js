@@ -4,7 +4,8 @@
 // within 135 degrees of the goal direction, every ball moving 0-2.5 m/s in any direction, and neither chaser passed
 // yet (both can reach the goal no later than the carrier): every game starts as a contain the carrier has to break.
 // Results: the carrier ESCAPES (past both chasers: it can reach the goal sooner than either, by GAP seconds) = +1 for the
-// carrier; a chaser touches it (a return), or neither in LIMIT ticks (a draw: the contain held), = a win for the chasers.
+// carrier; a chaser touches it (a return) = a win for the chasers; neither in LIMIT ticks (a draw) = a win for the carrier
+// (the holder kept the flag).
 // Each side sees the other side REACT ticks late (no copying keys). Decisions every K ticks.
 // Hold to kill: each decision, a chaser for which holding one key is a certain kill (chase/killtest.js fast check,
 // 1 cm margin, on what the chaser sees: the carrier carried forward over the ticks it can't see, free to swerve at once) holds that key until it touches or misses; its
