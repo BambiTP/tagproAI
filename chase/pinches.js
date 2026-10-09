@@ -12,6 +12,7 @@
 // much longer (at least 3 tiles and half as long again). Nearby pinches (middles within 2 tiles) keep the narrowest.
 const fs = require('fs'), path = require('path');
 const { getMap, mapKeys } = require('../sim');
+const N = require('../nav');
 
 const MAX_WIDTH = 8, CORNER = 2;
 const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
@@ -87,7 +88,9 @@ function cornersOf(tiles) {
 // open, the wall stays flat at that distance, and the bump ahead covers the whole strip between the carrier and the
 // wall (otherwise the carrier slips past along the wall). From the bump back to where the flat wall starts (the wall
 // steps away, or a corner); more than MAX_FLAT tiles without a bump is not a kill point. Straight and 45 degree walls.
-// lanes: [{ from, to, off }] = the run, into the bump.
+// lanes: [{ from, to, off, fwd }] = the run, into the bump. fwd[team] (1 red, 2 blue): true when running this way takes
+// that team's carrier closer to its own flag along the route (a forward kill point, where it wants to go anyway);
+// false = backward (it would only run in while retreating).
 const MAX_FLAT = 10, MIN_FLAT = 2, MAX_OFF = 2;
 function lanesOf(tiles) {
   const W = tiles.length, H = tiles[0].length, open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
@@ -127,7 +130,13 @@ if (require.main === module) {
   const out = {};
   for (const key of mapKeys()) {
     const m = getMap(key);
-    out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles), lanes: lanesOf(m.tiles) };
+    // forward or backward for each team: does the run take that team's carrier closer to its own flag?
+    const flags = {}; for (let x = 0; x < m.tiles.length; x++) for (let y = 0; y < m.tiles[0].length; y++) {
+      const f = Math.floor(parseFloat(m.tiles[x][y])); if (f === 3) flags[1] = [x, y]; if (f === 4) flags[2] = [x, y]; }
+    const F = {}; for (const t of [1, 2]) if (flags[t]) F[t] = N.field(m.tiles, flags[t][0], flags[t][1]);
+    const lanes = lanesOf(m.tiles).map((l) => ({ ...l, fwd: Object.fromEntries([1, 2].map((t) => [t, !!F[t] &&
+      F[t].d[l.to[0] * F[t].H + l.to[1]] < F[t].d[l.from[0] * F[t].H + l.from[1]]])) }));
+    out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles), lanes };
     console.log(out[key].name.padEnd(28), out[key].pinches.length, 'safety nets,', out[key].lanes.length, 'kill points');
   }
   fs.writeFileSync(path.join(__dirname, 'pinches.json'), JSON.stringify(out));

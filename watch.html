@@ -71,8 +71,9 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
  <div class="hud">
   <button class="btn2" id="kPrev">◀ Back</button><button class="btn2" id="kNext">Next ▶</button>
   <label><input type="checkbox" id="kShowP" checked> safety nets</label><label><input type="checkbox" id="kShowL" checked> kill points</label>
+  <select id="kTeam"><option value="1">for a red carrier</option><option value="2">for a blue carrier</option></select>
   <span>Map <b id="kNum" class="big">–</b></span><b id="kName" style="font-size:18px;color:#fff"></b>
-  <span class="dim"><span style="color:#ff9a2a">Orange lines</span> = safety nets (choke points: number = width in tiles; past the line the space opens up, so chasers fall back here when they can't contain). <span style="color:#4dd">Cyan arrows</span> = kill points: a carrier running this way along a flat wall hits an inward bump (dot), so a chaser can stop containing and just let it run in. Bright = touching the wall, faint = 1-2 tiles out. Flat walls over 10 tiles without a bump don't count. Click a line to cycle <span style="color:#f55">wrong</span> → <span style="color:#5f5">right</span> → unmarked.</span>
+  <span class="dim"><span style="color:#ff9a2a">Orange lines</span> = safety nets (choke points: number = width in tiles; past the line the space opens up, so chasers fall back here when they can't contain). <span style="color:#4dd">Cyan arrows</span> = kill points: a carrier running this way along a flat wall hits an inward bump (dot), so a chaser can stop containing and just let it run in. <span style="color:#4dd">Cyan solid</span> = forward (the carrier runs this way towards its own flag), <span style="color:#e0a040">amber dashed</span> = backward (only while retreating); pick the carrier's team. Bright = touching the wall, faint = 1-2 tiles out. Flat walls over 10 tiles without a bump don't count. Click a line to cycle <span style="color:#f55">wrong</span> → <span style="color:#5f5">right</span> → unmarked.</span>
  </div>
  <canvas id="kc" class="map"></canvas>
 </div>
@@ -477,13 +478,14 @@ async function loadPinches(step){if(step)K.i+=step;const d=await (await fetch('p
  kv.setMap(d.tiles,d.tile,{x:-99,y:-99},null);$('kNum').textContent=(d.i+1)+' of '+d.count;$('kName').textContent=d.name+' ('+(d.lanes||[]).length+' kill points, '+d.pinches.length+' safety nets)';drawPinches();}
 function drawPinches(){const d=K.d;if(!d)return;kv.base();const g=kv.g,px=kv.px,C2=t=>(t+.5)*px;
  if($('kShowL').checked)for(const l of d.lanes||[]){const ax=C2(l.from[0]),ay=C2(l.from[1]),bx=C2(l.to[0]),by=C2(l.to[1]),L=Math.hypot(bx-ax,by-ay)||1,ux=(bx-ax)/L,uy=(by-ay)/L;
-  g.globalAlpha=l.off?.5:1;g.strokeStyle='#4dd';g.fillStyle='#4dd';g.lineWidth=Math.max(2,px/(l.off?12:8));g.beginPath();g.moveTo(ax,ay);g.lineTo(bx,by);g.stroke();
+  const fw=!l.fwd||l.fwd[$('kTeam').value],col=fw?'#4dd':'#e0a040';g.setLineDash(fw?[]:[px/3,px/5]);
+  g.globalAlpha=l.off?.5:1;g.strokeStyle=col;g.fillStyle=col;g.lineWidth=Math.max(2,px/(l.off?12:8));g.beginPath();g.moveTo(ax,ay);g.lineTo(bx,by);g.stroke();g.setLineDash([]);
   g.beginPath();g.moveTo(bx+ux*px*.3,by+uy*px*.3);g.lineTo(bx-ux*px*.3-uy*px*.3,by-uy*px*.3+ux*px*.3);g.lineTo(bx-ux*px*.3+uy*px*.3,by-uy*px*.3-ux*px*.3);g.fill();
   g.beginPath();g.arc(bx,by,Math.max(3,px*.22),0,7);g.fill();g.globalAlpha=1;}
  if($('kShowP').checked)d.pinches.forEach((p,n)=>{const m=d.marks[n],col=m==='bad'?'#f55':m==='good'?'#5f5':'#ff9a2a';g.strokeStyle=col;g.lineWidth=Math.max(3,px/5);g.globalAlpha=.9;
   g.beginPath();g.moveTo(C2(p.a[0]),C2(p.a[1]));g.lineTo(C2(p.b[0]),C2(p.b[1]));g.stroke();g.globalAlpha=1;
   g.fillStyle=col;g.font='bold '+Math.max(11,px/2.2)+'px sans-serif';g.fillText(String(p.width),(C2(p.a[0])+C2(p.b[0]))/2+4,(C2(p.a[1])+C2(p.b[1]))/2-4);});}
-$('kShowP').onchange=$('kShowL').onchange=drawPinches;$('kPrev').onclick=()=>loadPinches(-1);$('kNext').onclick=()=>loadPinches(1);
+$('kShowP').onchange=$('kShowL').onchange=$('kTeam').onchange=drawPinches;$('kPrev').onclick=()=>loadPinches(-1);$('kNext').onclick=()=>loadPinches(1);
 $('kc').onclick=async(e)=>{const d=K.d;if(!d)return;const r=$('kc').getBoundingClientRect(),x=(e.clientX-r.left)*$('kc').width/r.width,y=(e.clientY-r.top)*$('kc').height/r.height,px=kv.px,C2=t=>(t+.5)*px;
  let best=-1,bd=px;d.pinches.forEach((p,n)=>{const ax=C2(p.a[0]),ay=C2(p.a[1]),bx=C2(p.b[0]),by=C2(p.b[1]),L2=(bx-ax)**2+(by-ay)**2||1,u=Math.max(0,Math.min(1,((x-ax)*(bx-ax)+(y-ay)*(by-ay))/L2)),dd=Math.hypot(ax+u*(bx-ax)-x,ay+u*(by-ay)-y);if(dd<bd){bd=dd;best=n;}});
  if(best<0)return;const cur=d.marks[best],next=cur==null?'bad':cur==='bad'?'good':null;if(next)d.marks[best]=next;else delete d.marks[best];drawPinches();
