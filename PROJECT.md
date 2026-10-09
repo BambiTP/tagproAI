@@ -181,6 +181,17 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
 - **Caveat on every duel / 2v2 result above:** 60% of chase puzzles (2,384 of 3,977) start with the carrier's OWN flag
   taken, so in the real game it could not cap; the tests assumed the flag home. Comparisons between bots stay fair
   (same puzzles), but caps are too easy. From here on, test on flag-home puzzles only (1,593).
+- **Certain kills** (`chase/killtest.js grid`, `chase/killgridsummary.js`): furthest distance at which holding one key
+  touches the carrier whatever it does, by engine, for chaser/carrier speeds 0-3 by 0.25, 16 directions each, carrier
+  reaction 0/6/12 ticks (111,747 combinations, results/killgrid-*.csv). The fast check (motion maths, 1 cm margin) is
+  never too optimistic except 6 combinations at 0.40 m (balls bump). Random-sample run: results/killtest.jsonl.
+- **Kill points and safety nets** (`chase/pinches.js` -> chase/pinches.json; Kill points tab): safety nets = choke
+  points; kill points = a flat wall (straight or 45 degrees, 1-tile notches allowed, up to 10 tiles) running into an
+  inward bump, for carriers touching the wall or 1-2 tiles out; forward/backward per team (towards its flag, or its end
+  zone on neutral-flag maps). Terms are the user's.
+- **Containing chasers** (`team.js contain`): certain kill -> hold the key; carrier on a forward kill point -> the chaser
+  ahead holds the open side; else the chaser ahead waits a tile short of the next safety net; the other follows behind.
+  Round 23 tests them on flag-home puzzles.
 - Private page: **Chase me** tab: you carry the flag from a real flag-home moment (1,580), two chasers steered in the
   browser (aim where you're heading, route round walls, avoid spikes; not the full search). Results in
   runs/chaseme.jsonl.
