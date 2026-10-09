@@ -12,3 +12,4 @@ labels/*.log
 chase/scenarios/
 chase/results/
 league/state/
+league/state-openfloor/

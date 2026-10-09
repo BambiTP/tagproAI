@@ -162,4 +162,4 @@ if (require.main === module) {
   }
   fs.writeFileSync(path.join(__dirname, 'pinches.json'), JSON.stringify(out));
 }
-module.exports = { pinchesOf, cornersOf, lanesOf, blockedTile };
+module.exports = { pinchesOf, cornersOf, lanesOf, blockedTile, distTo };
