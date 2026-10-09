@@ -142,6 +142,12 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   lookahead, search hook `react`): pair 62.5% vs no blocking 57.1% (+5, se 5.5). **Decision: stop blocking with
   rules + short search.** Real blocking probably needs planning two balls together over 1 s+, or learning it from
   real games.
+- Real blocks (`chase/blocks.js`, `chase/blocksummary.js`, 599 ranked games): 144,700 moments with an enemy closing
+  on a carrier within 6 tiles; in 44,479 the carrier's teammate touched that enemy. Against near misses (teammate
+  within 1.5 tiles, no touch): that enemy returned it within 3 s 15% vs 21%, carrier capped within 10 s 15% vs 10%.
+  Half a second before the touch the blocker is ~0.9 of the way from carrier to enemy, ~1 tile off the line, drifting
+  slowly towards the enemy. In bot games a touch does not hold a chaser up (25% vs 23%): suspect reaction time, so
+  `DELAY=12` in team.js applies every ball's keys 200 ms late (round 10 tests blocking with it).
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
