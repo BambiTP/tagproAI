@@ -463,7 +463,7 @@ addEventListener('dragover',(e)=>e.preventDefault());addEventListener('drop',(e)
       const all = JSON.parse(fs.readFileSync(path.join(__dirname, 'chase', 'pinches.json'), 'utf8')), keys = Object.keys(all);
       const i = ((parseInt(u.searchParams.get('i'), 10) || 0) % keys.length + keys.length) % keys.length, key = keys[i];
       const mf = path.join(__dirname, 'runs', 'pinch-marks.json'), marks = fs.existsSync(mf) ? JSON.parse(fs.readFileSync(mf, 'utf8')) : {};
-      return send(res, 200, { i, count: keys.length, key, name: all[key].name, tiles: getMap(key).tiles, tile: N.TILE, pinches: all[key].pinches, marks: marks[key] || {} });
+      return send(res, 200, { i, count: keys.length, key, name: all[key].name, tiles: getMap(key).tiles, tile: N.TILE, pinches: all[key].pinches, corners: all[key].corners || [], marks: marks[key] || {} });
     }
     if (u.pathname === '/pinches' && req.method === 'POST') {
       let body = '';

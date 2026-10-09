@@ -1,6 +1,10 @@
 // chase/pinches.js - pinch points on every map in the rotation: places where the open floor is narrow across and
 // opens up a lot just beyond (the carrier gets free space once it is through). Spikes count as walls.
-//   node chase/pinches.js   -> chase/pinches.json { mapKey: { name, pinches: [{ a, b, width, open }] } }
+//   node chase/pinches.js   -> chase/pinches.json { mapKey: { name, pinches: [{ a, b, width, open }], corners: [[x, y, dirs]] } }
+// Corners: floor tiles where the free run is CORNER tiles or less in two directions at right angles (e.g. a wall just
+// above and a wall just to the left), and also along both diagonals that run beside those walls (up-right and
+// down-left for that example): a carrier there cannot keep going any of those ways. Beside a slanted (45 degree) wall
+// one of those diagonals is a long free run, so slanted walls do not count. dirs names the two blocked directions.
 // For every floor tile, in 4 directions (across, up-down, both diagonals): the chord = the straight run of open floor
 // through it. A chord is a pinch when it is at most MAX_WIDTH tiles long, no longer than the parallel chords one tile to
 // either side, the floor continues on both sides (not a dead end), and 2-4 tiles to one side the parallel chords are
@@ -8,7 +12,7 @@
 const fs = require('fs'), path = require('path');
 const { getMap, mapKeys } = require('../sim');
 
-const MAX_WIDTH = 8;
+const MAX_WIDTH = 8, CORNER = 2;
 const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
 
 function blockedTile(v) {
@@ -55,13 +59,34 @@ function pinchesOf(tiles) {
   return kept;
 }
 
+function cornersOf(tiles) {
+  const W = tiles.length, H = tiles[0].length, open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
+  const run = (x, y, dx, dy) => { let n = 0; // a diagonal step needs both side tiles open (no slipping between corners)
+    while (n <= CORNER) { const cx = x + n * dx, cy = y + n * dy; if (!open(cx + dx, cy + dy) || (dx && dy && (!open(cx + dx, cy) || !open(cx, cy + dy)))) break; n++; }
+    return n; };
+  const out = [];
+  for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
+    if (!open(x, y)) continue;
+    const u = run(x, y, 0, -1) <= CORNER, d = run(x, y, 0, 1) <= CORNER, l = run(x, y, -1, 0) <= CORNER, r = run(x, y, 1, 0) <= CORNER;
+    const dirs = (u ? 'u' : '') + (d ? 'd' : '') + (l ? 'l' : '') + (r ? 'r' : '');
+    // a corner pair (vertical side v, horizontal side h) also needs both diagonals along its walls short
+    const pairs = [[u, l, -1, -1], [u, r, -1, 1], [d, l, 1, -1], [d, r, 1, 1]]; // [vertical side blocked, horizontal side blocked, vy, hx]
+    // the walls doing the blocking must be square (full wall or spike), not the slanted half-tiles (1.1-1.4) that make
+    // smooth 45 degree walls: a staircase of those is a slope the ball slides along, not a corner
+    const square = (dx, dy) => { const n = run(x, y, dx, dy), tx = x + (n + 1) * dx, ty = y + (n + 1) * dy;
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) return true; const v = parseFloat(tiles[tx][ty]); return !(v > 1 && v < 2); };
+    if (pairs.some(([v, h, vy, hx]) => v && h && square(0, vy) && square(hx, 0) && run(x, y, hx, -vy) <= CORNER && run(x, y, -hx, vy) <= CORNER)) out.push([x, y, dirs]);
+  }
+  return out;
+}
+
 if (require.main === module) {
   const out = {};
   for (const key of mapKeys()) {
     const m = getMap(key);
-    out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles) };
-    console.log(out[key].name.padEnd(28), out[key].pinches.length, 'pinches');
+    out[key] = { name: (m.info && m.info.name) || key, pinches: pinchesOf(m.tiles), corners: cornersOf(m.tiles) };
+    console.log(out[key].name.padEnd(28), out[key].pinches.length, 'pinches,', out[key].corners.length, 'corner tiles');
   }
   fs.writeFileSync(path.join(__dirname, 'pinches.json'), JSON.stringify(out));
 }
-module.exports = { pinchesOf, blockedTile };
+module.exports = { pinchesOf, cornersOf, blockedTile };

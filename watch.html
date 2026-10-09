@@ -71,7 +71,7 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
  <div class="hud">
   <span>Map <b id="kNum" class="big">–</b></span><b id="kName" style="font-size:18px;color:#fff"></b>
   <button class="btn2" id="kPrev">◀ Back</button><button class="btn2" id="kNext">Next ▶</button>
-  <span class="dim">Orange lines are the pinches the finder picked (number = width in tiles). Click a pinch to cycle: <span style="color:#f55">wrong</span> → <span style="color:#5f5">right</span> → unmarked.</span>
+  <span class="dim"><span style="color:#ff9a2a">Orange lines</span> = choke points (number = width in tiles; past the line the space opens up). <span style="color:#c070ff">Purple patches</span> = corners (walls within 2 tiles on two sides at right angles). Click a line to cycle <span style="color:#f55">wrong</span> → <span style="color:#5f5">right</span> → unmarked.</span>
  </div>
  <canvas id="kc" class="map"></canvas>
 </div>
@@ -475,6 +475,7 @@ const kv=new View($('kc')),K={d:null,i:0};
 async function loadPinches(step){if(step)K.i+=step;const d=await (await fetch('pinches?i='+K.i)).json();K.d=d;K.i=d.i;
  kv.setMap(d.tiles,d.tile,{x:-99,y:-99},null);$('kNum').textContent=(d.i+1)+' of '+d.count;$('kName').textContent=d.name+' ('+d.pinches.length+' pinches)';drawPinches();}
 function drawPinches(){const d=K.d;if(!d)return;kv.base();const g=kv.g,px=kv.px,C2=t=>(t+.5)*px;
+ g.fillStyle='#c070ff';g.globalAlpha=.45;for(const[x,y]of d.corners||[])g.fillRect(x*px,y*px,px,px);g.globalAlpha=1;
  d.pinches.forEach((p,n)=>{const m=d.marks[n],col=m==='bad'?'#f55':m==='good'?'#5f5':'#ff9a2a';g.strokeStyle=col;g.lineWidth=Math.max(3,px/5);g.globalAlpha=.9;
   g.beginPath();g.moveTo(C2(p.a[0]),C2(p.a[1]));g.lineTo(C2(p.b[0]),C2(p.b[1]));g.stroke();g.globalAlpha=1;
   g.fillStyle=col;g.font='bold '+Math.max(11,px/2.2)+'px sans-serif';g.fillText(String(p.width),(C2(p.a[0])+C2(p.b[0]))/2+4,(C2(p.a[1])+C2(p.b[1]))/2-4);});}
