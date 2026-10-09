@@ -17,5 +17,5 @@ for (const b of plans) {
   const ids = [...new Set(ks.map((k) => k.split('|')[0]))];
   const d = ids.map((id) => { const kk = ks.filter((k) => k.startsWith(id + '|')); return m(kk.map((k) => ret(B[k]))) - m(kk.map((k) => ret(A[k]))); });
   const mean = m(d), se = Math.sqrt(d.reduce((a, v) => a + (v - mean) ** 2, 0) / (d.length - 1) / d.length);
-  console.log(`${b.padEnd(8)} ${ks.length} games: returned ${(100 * m(ks.map((k) => ret(B[k])))).toFixed(1)}% (no blocking ${(100 * m(ks.map((k) => ret(A[k])))).toFixed(1)}%); saved the carrier ${s}, cost it ${c}; per puzzle ${(100 * mean).toFixed(1)} points (negative = better for the carrier), standard error ${(100 * se).toFixed(1)}`);
+  console.log(`${b.padEnd(8)} ${ks.length} games: returned ${(100 * m(ks.map((k) => ret(B[k])))).toFixed(1)}% (${process.env.BASE || 'both-alone'} ${(100 * m(ks.map((k) => ret(A[k])))).toFixed(1)}%); saved the carrier ${s}, cost it ${c}; per puzzle ${(100 * mean).toFixed(1)} points (negative = better for the carrier), standard error ${(100 * se).toFixed(1)}`);
 }
