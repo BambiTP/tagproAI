@@ -122,4 +122,4 @@ class Game {
   }
 }
 const VIEW = 2 + 4 + 4 + 2 + RAYS + 1 + 2; // 23 numbers for either side
-module.exports = { Game, VIEW, LIMIT, K };
+module.exports = { Game, VIEW, LIMIT, K, arenaMap, GOAL_DIST, REACT };

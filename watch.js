@@ -475,6 +475,14 @@ addEventListener('dragover',(e)=>e.preventDefault());addEventListener('drop',(e)
         fs.writeFileSync(mf, JSON.stringify(marks)); send(res, 200, { ok: true }); } catch (e) { send(res, 400, { error: 'bad' }); } });
       return;
     }
+    // hold vs league: a league start (league/env.js) and the latest chaser network, for playing the holder in the browser
+    if (u.pathname === '/league' && req.method === 'GET') {
+      const E = require('./league/env'), g = new E.Game(parseInt(u.searchParams.get('seed'), 10) || Date.now() % 1e9).reset();
+      const st = (p) => { const q = p.body.GetPosition(), v = p.body.GetLinearVelocity(); return { x: q.x, y: q.y, vx: v.x, vy: v.y }; };
+      const nf = path.join(__dirname, 'league', 'state', 'chaser.json'), sf = path.join(__dirname, 'league', 'state', 'state.json');
+      return send(res, 200, { map: E.arenaMap(), tile: N.TILE, goal: g.goal, dir: g.dir, ca: st(g.ca), ch: g.ch.map(st), react: E.REACT, limit: E.LIMIT,
+        net: fs.existsSync(nf) ? JSON.parse(fs.readFileSync(nf, 'utf8')) : null, gen: fs.existsSync(sf) ? JSON.parse(fs.readFileSync(sf, 'utf8')).gen : 0 });
+    }
     if (u.pathname === '/chaseme' && req.method === 'GET') return send(res, 200, chaseMe(parseInt(u.searchParams.get('i'), 10) || 0));
     if (u.pathname === '/chaseme' && req.method === 'POST') {
       let body = '';

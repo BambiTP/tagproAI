@@ -28,7 +28,7 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 <script src="engine/box2d.js"></script><script src="engine/constants.js"></script><script src="engine/game.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head><body>
-<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="chases">Chases</button><button data-t="pinches">Kill points</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
+<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="league">Hold vs league</button><button data-t="chases">Chases</button><button data-t="pinches">Kill points</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
 
 <div id="play" class="tab on">
  <div class="hud">
@@ -56,6 +56,15 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
  <div class="hud" style="padding-top:0"><span id="wInfo"></span>
  </div>
  <canvas id="wc" class="map"></canvas>
+</div>
+
+<div id="league" class="tab">
+ <div class="hud">
+  <span class="big" id="lgTime">0.00 s</span><span id="lgScore" class="dim"></span>
+  <span class="dim">You hold the flag (blue, white ring). Win by getting past both chasers towards the <span style="color:#3f3">green cross</span>, or by lasting 8 s; they win only by touching you. Arrows or WASD · R restart · N new start</span>
+ </div>
+ <div class="hud" style="padding-top:0"><span id="lgInfo"></span></div>
+ <canvas id="lgc" class="map"></canvas>
 </div>
 
 <div id="chaseme" class="tab">
@@ -209,7 +218,7 @@ let tab='play';
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
  tab=b.dataset.t;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));$(tab==='graphs'?'graphs-tab':tab).classList.add('on');
- if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='chaseme'&&!M.d)loadChaseMe(); if(tab==='pinches'&&!K.d)loadPinches(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
+ if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='chaseme'&&!M.d)loadChaseMe(); if(tab==='league'&&!LG.d)loadLeague(); if(tab==='pinches'&&!K.d)loadPinches(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
 });
 
 // ---------- play ----------
@@ -534,6 +543,67 @@ $('mMode').onchange=()=>{$('mMode').blur();restartChaseMe();};
 addEventListener('keydown',e=>{if(tab!=='chaseme')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
  if(e.code==='KeyR'&&M.d)restartChaseMe();if(e.code==='KeyN')loadChaseMe(1);if(e.code==='KeyB')loadChaseMe(-1);});
 
+// ---------- hold vs league: you are the carrier, the league's chaser network plays the two chasers ----------
+// A port of league/env.js for the browser: same starts (dealt by the server), same views, hold to kill, escape and
+// draw rules. The chasers see you REACT ticks late; a chaser with a certain kill holds that key.
+const lgv=new View($('lgc')),LG={d:null,state:'load',t:0,acc:0,score:{you:0,them:0}};
+const LG_DIRS=[[1,0],[0,1],[-1,0],[0,-1]],LG_DAMP=1-0.5/60,LG_ACC=0.025,LG_MS=2.5,LG_K=4,LG_GAP=0.25;
+function lgTReach(d,v){if(d<=0)return 0;let x=0,vv=v,t=0;while(x<d&&t<2000){vv*=LG_DAMP;x+=vv/60;if(vv<LG_MS)vv+=LG_ACC;t++;}return t;}
+function lgTimeTo(p,v,g){const dx=g.x-p.x,dy=g.y-p.y,d=Math.hypot(dx,dy)||1e-9;return lgTReach(Math.max(0,d-0.19),(v.x*dx+v.y*dy)/d)/60;}
+function lgKin(b,a){let[x,y,vx,vy]=b;vx*=LG_DAMP;vy*=LG_DAMP;const[ax,ay]=ACTIONS[a];if(ax>0&&vx<LG_MS)vx+=LG_ACC;if(ax<0&&vx>-LG_MS)vx-=LG_ACC;if(ay>0&&vy<LG_MS)vy+=LG_ACC;if(ay<0&&vy>-LG_MS)vy-=LG_ACC;return[x+vx/60,y+vy/60,vx,vy];}
+function lgSure(s,k,react,blind,touch){let c=[s.cx,s.cy,s.cvx,s.cvy],fx=s.fx,fy=s.fy,fvx=s.fvx,fvy=s.fvy,sp=0,vs=0;
+ for(let t=0;t<blind;t++){fvx*=LG_DAMP;fvy*=LG_DAMP;fx+=fvx/60;fy+=fvy/60;vs=vs*LG_DAMP+LG_ACC;sp+=vs/60;}
+ for(let t=1;t<=90;t++){c=lgKin(c,k);fvx*=LG_DAMP;fvy*=LG_DAMP;fx+=fvx/60;fy+=fvy/60;vs=t>react?vs*LG_DAMP+LG_ACC:vs*LG_DAMP;sp+=vs/60;
+  if(Math.hypot(Math.abs(fx-c[0])+sp,Math.abs(fy-c[1])+sp)<touch)return t;}return Infinity;}
+const lgSt=p=>{const q=p.body.GetPosition(),v=p.body.GetLinearVelocity();return{x:q.x,y:q.y,vx:v.x,vy:v.y};};
+function lgRot(x,y){const[gx,gy]=LG_DIRS[LG.d.dir];return[x*gx+y*gy,-x*gy+y*gx];}
+function lgUnrot(x,y){const[gx,gy]=LG_DIRS[LG.d.dir];return[x*gx-y*gy,x*gy+y*gx];}
+function lgKeyToWorld(a){const[kx,ky]=ACTIONS[a],[gx,gy]=LG_DIRS[LG.d.dir],wx=kx*gx-ky*gy,wy=kx*gy+ky*gx;return ACTIONS.findIndex(([p,q])=>p===wx&&q===wy);}
+function lgRays(p){const out=[],q=p.body.GetPosition(),T=LG.sim.tiles;for(let i=0;i<8;i++){const a=i*Math.PI/4,[wx,wy]=lgUnrot(Math.cos(a),Math.sin(a));let d=0;
+ for(;d<5;d+=0.1){const tx=Math.round((q.x+wx*d)/0.4),ty=Math.round((q.y+wy*d)/0.4);if(tx<0||ty<0||tx>=T.length||ty>=T[0].length||parseFloat(T[tx][ty])!==2)break;}out.push(d/5);}return out;}
+function lgKill(i){const p=LG.ch[i],q=p.body.GetPosition(),w=p.body.GetLinearVelocity(),c0=LG.hist[0].ca;if(Math.hypot(c0.x-q.x,c0.y-q.y)>4.5)return{k:-1};
+ const st={cx:q.x,cy:q.y,cvx:w.x,cvy:w.y,fx:c0.x,fy:c0.y,fvx:c0.vx,fvy:c0.vy};let best=-1,bt=Infinity;for(let k=1;k<=8;k++){const t=lgSure(st,k,0,LG.d.react,0.375);if(t<bt){bt=t;best=k;}}
+ return bt<Infinity?{k:best,t:bt}:{k:-1};}
+function lgView(i){const now=LG.hist[LG.hist.length-1],late=LG.hist[0],me=now.ch[i],mate=now.ch[1-i];
+ const f=o=>{const[x,y]=lgRot(o.x-me.x,o.y-me.y),[vx,vy]=lgRot(o.vx,o.vy);return[x/5,y/5,vx/3,vy/3];};
+ const[vx,vy]=lgRot(me.vx,me.vy),[gx,gy]=lgRot(LG.d.goal.x-me.x,LG.d.goal.y-me.y);
+ return[vx/3,vy/3,...f(late.ca),...f(mate),gx/10,gy/10,...lgRays(LG.ch[i]),1-LG.t/LG.d.limit,LG.kills[i].k>=0?1:0,LG.kills[1-i].k>=0?1:0];}
+function lgAct(x){const P=LG.d.net.p,IN=LG.d.net.IN,H=64,A=9,h1=new Array(H),h2=new Array(H);
+ for(let j=0;j<H;j++){let s=P.b1[j];for(let i=0;i<IN;i++)s+=x[i]*P.W1[i*H+j];h1[j]=Math.tanh(s);}
+ for(let j=0;j<H;j++){let s=P.b2[j];for(let i=0;i<H;i++)s+=h1[i]*P.W2[i*H+j];h2[j]=Math.tanh(s);}
+ let best=0,bv=-Infinity;for(let a=0;a<A;a++){let s=P.bp[a];for(let i=0;i<H;i++)s+=h2[i]*P.Wp[i*A+a];if(s>bv){bv=s;best=a;}}return best;}
+async function loadLeague(){LG.state='load';const d=await (await fetch('league?seed='+Math.floor(Math.random()*1e9))).json();
+ if(!d.net){$('lgInfo').textContent='No league network yet (league/league.js makes it).';return;}
+ LG.d=d;lgv.setMap(d.map.tiles,d.tile,d.goal,null);$('lgInfo').textContent='Chasers: the league network from generation '+d.gen+'. They see you '+Math.round(d.react/60*1000)+' ms late and hold a key when a kill is certain.';restartLeague();}
+function restartLeague(){const d=LG.d;if(!d)return;LG.sim=new BSim(JSON.parse(JSON.stringify(d.map)));
+ LG.ca=LG.sim.addBall(2);LG.sim.place(LG.ca,d.ca.x,d.ca.y,d.ca.vx,d.ca.vy);
+ LG.ch=d.ch.map(c=>{const p=LG.sim.addBall(1);LG.sim.place(p,c.x,c.y,c.vx,c.vy);return p;});
+ LG.t=0;LG.acc=0;LG.held=[null,null];LG.keys=[0,0];LG.hist=[{ca:lgSt(LG.ca),ch:LG.ch.map(lgSt)}];LG.kills=[lgKill(0),lgKill(1)];
+ LG.state='count';LG.countEnd=performance.now()+1500;$('card').style.display='none';}
+function lgFinish(res){LG.state='done';const win=res!=='return';LG.score[win?'you':'them']++;$('lgScore').textContent='you '+LG.score.you+' · chasers '+LG.score.them;
+ const c=$('card');c.innerHTML='<h2>'+(res==='escape'?'Escaped! ':res==='draw'?'Held on for 8 s! ':'Returned at ')+(LG.t/60).toFixed(2)+' s</h2>R to replay this start · N for a new one';c.style.display='block';}
+function stepLeague(dt){
+ if(LG.state==='count'){const left=LG.countEnd-performance.now();$('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/500);if(left<=0){LG.state='run';LG.acc=0;}return;}
+ if(LG.state!=='run')return;LG.acc+=dt*60;let n=0;
+ while(LG.acc>=1&&n<5){LG.acc--;n++;
+  if(LG.t%LG_K===0){ // a decision: the chasers choose (or hold a kill)
+   LG.ch.forEach((p,i)=>{if(!LG.held[i]&&LG.kills[i].k>=0)LG.held[i]={k:LG.kills[i].k,until:LG.t+LG.kills[i].t+6};if(LG.held[i]&&LG.t>=LG.held[i].until)LG.held[i]=null;
+    LG.keys[i]=LG.held[i]?LG.held[i].k:lgKeyToWorld(lgAct(lgView(i)));});}
+  setKeys(LG.ca,action());LG.ch.forEach((p,i)=>setKeys(p,LG.keys[i]));LG.sim.tickOnce();LG.t++;
+  LG.hist.push({ca:lgSt(LG.ca),ch:LG.ch.map(lgSt)});if(LG.hist.length>LG.d.react+2)LG.hist.shift();
+  const q=LG.ca.body.GetPosition();
+  if(LG.ch.some(p=>{const c=p.body.GetPosition();return Math.hypot(c.x-q.x,c.y-q.y)<0.385;})){lgFinish('return');break;}
+  if(LG.t%LG_K===0){const v=LG.ca.body.GetLinearVelocity(),tc=lgTimeTo(q,v,LG.d.goal);
+   if(Math.hypot(q.x-LG.d.goal.x,q.y-LG.d.goal.y)<0.4||(!LG.held.some(Boolean)&&LG.ch.every(p=>lgTimeTo(p.body.GetPosition(),p.body.GetLinearVelocity(),LG.d.goal)>tc+LG_GAP))){lgFinish('escape');break;}
+   if(LG.t>=LG.d.limit){lgFinish('draw');break;}
+   LG.kills=[lgKill(0),lgKill(1)];}}
+ if(LG.acc>5)LG.acc=0;}
+function drawLeague(){if(!LG.d||!LG.sim)return;lgv.base();
+ LG.ch.forEach((p,i)=>{const q=p.body.GetPosition();lgv.ball(q.x,q.y,'#ff4a4a',1,0,LG.held[i]?'kill!':'chaser');});
+ const q=LG.ca.body.GetPosition();lgv.ball(q.x,q.y,'#4a9bff',1,action(),'you');const g=lgv.g;g.strokeStyle='#fff';g.lineWidth=Math.max(2,lgv.px/10);g.beginPath();g.arc(lgv.P(q.x),lgv.P(q.y),lgv.px*.68,0,7);g.stroke();
+ $('lgTime').textContent=(LG.t/60).toFixed(2)+' s';}
+addEventListener('keydown',e=>{if(tab!=='league')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}if(e.code==='KeyR'&&LG.d)restartLeague();if(e.code==='KeyN')loadLeague();});
+
 // ---------- chases: one-against-one duels from chase/duel.js ----------
 // Bright balls are the bots (chaser and carrier, both played by the search); faint ones are the real players
 // from the replay, starting from the same moment. The green cross is the carrier's own flag (where it caps).
@@ -712,7 +782,8 @@ function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
  if(tab==='watch'){stepWatch(dt);drawWatch();}
  if(tab==='chases'){stepChase(dt);drawChase();}
  if(tab==='chaseme'){stepChaseMe(dt);drawChaseMe();}
+ if(tab==='league'){stepLeague(dt);drawLeague();}
  requestAnimationFrame(frame);}
-addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();if(CH.d)cv_.layout();if(M.d)mv.layout();if(K.d){kv.layout();drawPinches();}});
+addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();if(CH.d)cv_.layout();if(M.d)mv.layout();if(LG.d)lgv.layout();if(K.d){kv.layout();drawPinches();}});
 pickers();newPuzzle();requestAnimationFrame(frame);
 </script></body></html>
