@@ -60,6 +60,7 @@ if (require.main === module) {
   const n = +(process.argv[2] || 100); let seed = +(process.argv[3] || Date.now() % 1e9);
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
   const sim = new Sim(arena()), ch = sim.addBall(1), ca = sim.addBall(2);
+  const counts = {}; // 'react:EF' -> cases, E = engine says kill, F = fast check says kill
   const out = fs.openSync(path.join(__dirname, 'results', 'killtest' + (process.env.TAG || '') + '.jsonl'), 'a');
   for (let i = 0; i < n; i++) {
     // carrier in the middle of the arena; chaser 0.5-4 m away; speeds 0-3 m/s in any direction
@@ -69,8 +70,12 @@ if (require.main === module) {
     const s = { fx: 8, fy: 8, fvx: Math.cos(fa) * fs_, fvy: Math.sin(fa) * fs_, cx: 8 + Math.cos(ang) * d, cy: 8 + Math.sin(ang) * d, cvx: Math.cos(ca_) * cs, cvy: Math.sin(ca_) * cs };
     for (const react of REACTS) for (let k = 1; k <= 8; k++) {
       const f = fast(s, k, react), e = exact(sim, ch, ca, s, k, react);
-      fs.writeSync(out, JSON.stringify({ d: +d.toFixed(3), cs: +cs.toFixed(3), fsp: +fs_.toFixed(3), s, k, react, exact: e === Infinity ? null : e, fast: f.worst === Infinity ? null : f.worst, miss: +f.worstMiss.toFixed(3) }) + '\n');
+      const key = react + ':' + (e < Infinity ? 1 : 0) + (f.worst < Infinity ? 1 : 0); counts[key] = (counts[key] || 0) + 1;
+      // only cases that either side calls a kill are kept (the rest are just counted)
+      if (e < Infinity || f.worst < Infinity || f.worstMiss < 0.6)
+        fs.writeSync(out, JSON.stringify({ d: +d.toFixed(3), cs: +cs.toFixed(3), fsp: +fs_.toFixed(3), s, k, react, exact: e === Infinity ? null : e, fast: f.worst === Infinity ? null : f.worst, miss: +f.worstMiss.toFixed(3) }) + '\n');
     }
+    if ((i + 1) % 1000 === 0) fs.writeFileSync(path.join(__dirname, 'results', 'killtest' + (process.env.TAG || '') + '-counts.json'), JSON.stringify({ samples: i + 1, counts }));
   }
 }
 module.exports = { exact, fast, arena, keyOf };
