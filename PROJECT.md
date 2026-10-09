@@ -147,7 +147,9 @@ Guided search never beat the hand formula (best: run 3 at 4.55 vs 4.68).
   within 1.5 tiles, no touch): that enemy returned it within 3 s 15% vs 21%, carrier capped within 10 s 15% vs 10%.
   Half a second before the touch the blocker is ~0.9 of the way from carrier to enemy, ~1 tile off the line, drifting
   slowly towards the enemy. In bot games a touch does not hold a chaser up (25% vs 23%): suspect reaction time, so
-  `DELAY=12` in team.js applies every ball's keys 200 ms late (round 10 tests blocking with it).
+  `DELAY=12` in team.js applies every ball's keys 200 ms late. Round 10 (DELAY=12, mark vs none, 40 close x 6): 61.7%
+  vs 60.8% returned, and touches still don't hold bot chasers up (26% vs 27%): reaction time is not the reason.
+  Left: the real association may not be causal, or people give up / switch target after a block where bots don't.
 - Private page: Chases tab plays duels and 2v2 games next to the real players from the same moment.
 - Results in `chase/results/` (`summary.txt`, `duel-summary.txt`, `team-summary.txt`).
 
