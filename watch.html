@@ -69,9 +69,9 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 
 <div id="pinches" class="tab">
  <div class="hud">
-  <span>Map <b id="kNum" class="big">–</b></span><b id="kName" style="font-size:18px;color:#fff"></b>
   <button class="btn2" id="kPrev">◀ Back</button><button class="btn2" id="kNext">Next ▶</button>
   <label><input type="checkbox" id="kShowP" checked> safety nets</label><label><input type="checkbox" id="kShowL" checked> kill points</label>
+  <span>Map <b id="kNum" class="big">–</b></span><b id="kName" style="font-size:18px;color:#fff"></b>
   <span class="dim"><span style="color:#ff9a2a">Orange lines</span> = safety nets (choke points: number = width in tiles; past the line the space opens up, so chasers fall back here when they can't contain). <span style="color:#4dd">Cyan arrows</span> = kill points (lanes along a wall into a jut; the <span style="color:#f55">red line</span> is the line a chaser holds to box the carrier in). Click a line to cycle <span style="color:#f55">wrong</span> → <span style="color:#5f5">right</span> → unmarked.</span>
  </div>
  <canvas id="kc" class="map"></canvas>

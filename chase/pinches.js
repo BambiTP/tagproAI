@@ -85,14 +85,16 @@ function cornersOf(tiles) {
 }
 
 function lanesOf(tiles, minLen = 3, maxLen = 15, maxDepth = 3) {
-  const W = tiles.length, H = tiles[0].length, open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
+  const W = tiles.length, H = tiles[0].length, open0 = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !blockedTile(tiles[x][y]);
   const out = [];
   for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
-    if (!open(x, y)) continue;
-    for (const [nx, ny] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) { // n: towards the wall being hugged
+    if (!open0(x, y)) continue;
+    // n: towards the wall being hugged; straight walls and 45 degree walls (most maps have both)
+    for (const [nx, ny] of [[0, -1], [0, 1], [-1, 0], [1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const open = open0;
       if (open(x + nx, y + ny)) continue;
       for (const s of [1, -1]) {
-        const fx = -ny * s, fy = nx * s; // forward, along the wall
+        const fx = -ny * s, fy = nx * s; // forward, along the wall (diagonal when the wall is)
         if (open(x + fx, y + fy)) continue; // the end of a lane: a wall straight ahead
         // how far the jut reaches out from the hugged wall (tiles from the wall, within the lane, blocked ahead)
         let depth = 1;
@@ -104,12 +106,19 @@ function lanesOf(tiles, minLen = 3, maxLen = 15, maxDepth = 3) {
         // there must be open floor beyond the guard line (otherwise it is a corridor, not a lane off open space)
         const gx = x - depth * nx, gy = y - depth * ny;
         if (!open(gx, gy)) continue;
-        out.push({ from: [x - len * fx, y - len * fy], to: [x, y], depth,
+        out.push({ from: [x - len * fx, y - len * fy], to: [x, y], depth, len, f: [fx, fy],
           guard: [[gx - nx * 0.5 - len * fx, gy - ny * 0.5 - len * fy], [gx - nx * 0.5, gy - ny * 0.5]] });
       }
     }
   }
-  return out;
+  // lanes pointing the same way into (nearly) the same spot are one kill point: keep the longest
+  out.sort((a, b) => b.len - a.len);
+  const kept = [];
+  for (const l of out) {
+    if (kept.some((k) => k.f[0] === l.f[0] && k.f[1] === l.f[1] && Math.hypot(k.to[0] - l.to[0], k.to[1] - l.to[1]) <= 2)) continue;
+    kept.push(l);
+  }
+  return kept.map(({ from, to, depth, guard }) => ({ from, to, depth, guard }));
 }
 
 if (require.main === module) {
