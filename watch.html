@@ -26,9 +26,9 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 @media (max-width:500px){#graphs{grid-template-columns:1fr}}
 </style>
 <script src="engine/box2d.js"></script><script src="engine/constants.js"></script><script src="engine/game.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script><script src="tune/contain.js"></script>
 </head><body>
-<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="league">Hold vs league</button><button data-t="chases">Chases</button><button data-t="pinches">Kill points</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
+<div id="tabs"><button data-t="play" class="on">Play</button><button data-t="watch">Watch bots</button><button data-t="chaseme">Chase me</button><button data-t="escape">Escape the contain</button><button data-t="league">Hold vs league</button><button data-t="chases">Chases</button><button data-t="pinches">Kill points</button><button data-t="tune">Tune contain</button><button data-t="chasebots">Chase &amp; escape</button><button data-t="graphs">Graphs</button><button data-t="learning">Learning</button></div>
 
 <div id="play" class="tab on">
  <div class="hud">
@@ -70,9 +70,10 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
 <div id="chaseme" class="tab">
  <div class="hud">
   <span>Moment <b id="mNum" class="big">–</b></span><span class="big" id="mTime">0.00 s</span>
-  <span class="dim">You carry the flag: get to your flag (<span style="color:#3f3">green cross</span>) without being touched · arrows or WASD · R restart · N next · B back</span>
+  <span class="dim" id="mHint">You carry the flag: get to your flag (<span style="color:#3f3">green cross</span>) without being touched · arrows or WASD · R restart · N next · B back</span>
  </div>
- <div class="hud" style="padding-top:0"><select id="mMode"><option value="contain" selected>Chasers contain (cutter + presser, solo only when it can't miss)</option><option value="nets">Chasers use kill points + safety nets (team.js contain)</option><option value="charge">Chasers charge (aim where you're heading)</option></select><select id="mStart"><option value="0" selected>Starts: real ranked moments</option><option value="3">Grab start: chasers 3 tiles ahead</option><option value="5">Grab start: chasers 5 tiles ahead</option><option value="8">Grab start: chasers 8 tiles ahead</option><option value="12">Grab start: chasers 12 tiles ahead</option></select><span id="mInfo"></span></div>
+ <div class="hud" id="eRow" style="padding-top:0;display:none"><span>Pick a test:</span><button class="btn2" data-e="kp" style="font-size:16px;padding:6px 14px">Kill point</button><button class="btn2" data-e="wall" style="font-size:16px;padding:6px 14px">Running into a wall</button><span id="eWho" class="big" style="font-size:15px"></span><span class="dim">You run away from the two tuned chasers (the best values the search has found) · win by getting clear, or by making both of them miss a swipe · arrows or WASD · R restart · N next · B back</span></div>
+ <div class="hud" id="mRow" style="padding-top:0"><select id="mMode"><option value="contain" selected>Chasers contain (cutter + presser, solo only when it can't miss)</option><option value="tuned">Chasers contain, tuned values (from the Tune contain tab)</option><option value="nets">Chasers use kill points + safety nets (team.js contain)</option><option value="charge">Chasers charge (aim where you're heading)</option></select><select id="mStart"><option value="0" selected>Starts: real ranked moments</option><option value="kp">Starts: kill points (the Tune contain tests, same rules)</option><option value="wall">Starts: run into a wall, chasers behind (same rules)</option><option value="3">Grab start: chasers 3 tiles ahead</option><option value="5">Grab start: chasers 5 tiles ahead</option><option value="8">Grab start: chasers 8 tiles ahead</option><option value="12">Grab start: chasers 12 tiles ahead</option></select><span id="mInfo"></span></div>
  <canvas id="mc" class="map"></canvas>
 </div>
 
@@ -100,6 +101,23 @@ select{background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;pad
  <canvas id="cc" class="map"></canvas>
 </div>
 
+<div id="tune" class="tab">
+ <div class="hud"><span class="big" id="tPhase">–</span><span id="tSum" class="dim"></span></div>
+ <div class="hud"><select id="tSrc"><option value="live" selected>Live: games being played right now</option><option value="best">Replays: best values</option><option value="base">Replays: current page values</option></select>
+  <select id="tEf"><option value="">all escapers</option><option>route</option><option>around</option><option>back</option><option>juke</option><option>deep</option><option>fake</option><option>wall:straight</option><option>wall:back</option><option>wall:juke</option><option>wall:deep</option><option>wall:fake</option></select>
+  <select id="tRf"><option value="">all results</option><option value="escape">escapes</option><option value="return">guaranteed kills</option><option value="bump">bumps</option><option value="hold">holds</option></select>
+  <button id="tPrev">◀ prev</button><button id="tNext">next ▶</button><button id="tPlay">pause</button><select id="tSpd"><option value="1" selected>real speed</option><option value="0.5">half speed</option><option value="0.25">quarter speed</option><option value="2">double speed</option></select><input id="tScrub" type="range" min="0" max="1000" value="0" style="width:220px"><span id="tClock" class="big" style="font-size:16px">0.00 s</span><span id="tGame"></span>
+  <span class="dim">shaded box = the kill-point area (<span style="color:#ff0">yellow</span> = the contain line at the bump, <span style="color:#ff9a2a">orange dashed</span> = the other edges): leaving it any way, or dodging a <span style="color:#ff3b3b">red-ringed</span> swipe, is an escape · <span style="color:#3f3">green dots</span> = where "around" and "back" aim · space = pause · ←/→ = step</span></div>
+ <div style="padding:0 12px"><canvas id="tc" style="display:block;width:100%;border-radius:6px;background:#111"></canvas></div>
+ <div style="height:12px"></div>
+ <div style="padding:0 12px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px">
+  <div class="panel"><h3>Every setting tried</h3><p>Each dot is one set of values, scored on the same kill-point starts against every escaper. Score = half the worst escaper's stop rate + half the average (stopped = a guaranteed kill, the escaper popping, or held 8 s; the escaper running into a chaser that holds its spot counts as stopped too (blocked); a chaser moving into it without a certain kill is a <b>bump</b> and counts as a loss — contain, don't ram; an escape is the escaper getting its whole ball out of the kill-point area any way while 1 m clear of both chasers, or dodging a committed swipe; straight walls only). The line is the best so far. Click a dot to see its values.</p><canvas id="tChart"></canvas></div>
+  <div class="panel"><h3>How often each escaper is stopped</h3><p>Current page values vs the best found so far. <b>route</b> runs its route home, <b>around</b> goes for the spot just past the line round the bump, <b>back</b> turns round and runs out the back, <b>juke</b> looks 1/3 s ahead and picks the key that gets nearest any edge of the area without being touched.</p><div id="tEsc"></div><div id="tRun" style="margin-top:10px"></div></div>
+ </div>
+ <div style="padding:0 12px 12px"><div class="panel"><h3>The values</h3><p>Chasers' numbers, page values vs best so far (and the one you clicked). 1 tile = 0.4 m.</p><div id="tParams"></div><div id="tFinal" style="margin-top:10px"></div>
+  <button id="tUse" style="margin-top:8px">Play against the best values in Chase me</button></div></div>
+</div>
+<div id="chasebots" class="tab"><iframe id="cbFrame" style="width:100%;height:calc(100vh - 46px);border:0;display:block"></iframe></div>
 <div id="graphs-tab" class="tab">
  <div id="sum"></div>
  <div id="graphs">
@@ -216,9 +234,11 @@ const fmt=r=>!r?'still computing':r.result==='arrived'?secs(r.ticks):r.result===
 // ---------- tabs ----------
 let tab='play';
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
- tab=b.dataset.t;document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
+ tab=b.dataset.t;const esc=tab==='escape';if(esc)tab='chaseme';$('eRow').style.display=esc?'flex':'none';$('mRow').style.display=esc?'none':'flex';$('mHint').style.display=esc?'none':'';
+ if(esc!==!!M.esc){M.esc=esc;if(esc){M.keep=[$('mMode').value,$('mStart').value];$('mMode').value='tuned';eStart($('mStart').value==='wall'?'wall':'kp');}else if(M.keep){[$('mMode').value,$('mStart').value]=M.keep;M.i=0;M.d=null;M.state='load';$('card').style.display='none';}}
+ document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));$(tab==='graphs'?'graphs-tab':tab).classList.add('on');
- if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='chaseme'&&!M.d)loadChaseMe(); if(tab==='league'&&!LG.d)loadLeague(); if(tab==='pinches'&&!K.d)loadPinches(); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
+ if(tab==='play')newPuzzle(); if(tab==='watch'&&!W.d)nextWatch(); if(tab==='chases'&&!CH.d)loadChase(); if(tab==='chaseme'&&!M.d)loadChaseMe(); if(tab==='league'&&!LG.d)loadLeague(); if(tab==='pinches'&&!K.d)loadPinches(); if(tab==='tune')openTune(); if(tab==='chasebots'&&!$('cbFrame').src)$('cbFrame').src='/chase/ui/index.html'; if(tab==='chasebots')setTimeout(()=>$('cbFrame').focus(),50); if(tab==='graphs')drawGraphs(); if(tab==='learning')drawLearning();
 });
 
 // ---------- play ----------
@@ -530,9 +550,11 @@ $('kc').onclick=async(e)=>{const d=K.d;if(!d)return;const r=$('kc').getBoundingC
 
 async function loadChaseMe(step){
  if(step)M.i+=step;M.state='load';
- const ahead=+$('mStart').value,d=await (await fetch('chaseme?i='+M.i+(ahead?'&grab='+ahead:''))).json();
+ const sv=$('mStart').value,kp=sv==='kp'||sv==='wall',ahead=kp?0:+sv,d=await (await fetch(kp?'tune/start?kind='+(sv==='wall'?'wall':'kp')+'&i='+M.i:'chaseme?i='+M.i+(ahead?'&grab='+ahead:''))).json();
  if(!d.count){$('mInfo').textContent='No chase moments yet (chase/extract.js makes them).';return;}
  M.d=d;M.i=d.i;mv.setMap(d.map.tiles,d.tile,d.spot,null);$('mNum').textContent=(d.i+1)+' of '+d.count;
+ if(d.kp&&d.kind==='wall'){$('mInfo').innerHTML=d.mapName+' · run-into-a-wall start '+(d.i+1)+' of '+d.count+' (same as the search) · you\'re running at a wall with both chasers behind you · get back past both of them (behind the <span style="color:#4dd">cyan line</span> through the rearmost) at least 1 m clear, or make both of them miss a swipe (a chaser moving into another quadrant around you — dashed lines — counts as a swipe) · you lose if a committed swipe hits you or you run into one holding its spot · a chaser that bumps you without committing loses · 8 s and they held you';if($('mMode').value==='contain')$('mMode').value='tuned';restartChaseMe();return;}
+ if(d.kp){$('mInfo').innerHTML=d.mapName+' · kill-point start '+(d.i+1)+' of '+d.count+' (same as the search) · get out of the shaded area (any edge) at least 1 m clear of both chasers, or make both of them miss a swipe (a chaser crossing into another quadrant around you — dashed lines — counts as a swipe) · you lose if a chaser\'s committed swipe hits you or you run into one holding its spot · a chaser that bumps you without committing loses · 8 s and they held you';if($('mMode').value==='contain')$('mMode').value='tuned';restartChaseMe();return;}
  if(d.grab){$('mInfo').textContent=d.mapName+' · you ('+(d.me.team===1?'red':'blue')+') just grabbed their flag; you start behind it, '+d.routeTiles+' tiles from home by route · both chasers start still, '+d.ahead+' tiles ahead on your route home';restartChaseMe();return;}
  const m=Math.floor(d.t0/60000),sec=Math.floor(d.t0/1000)%60,R={returned:'returned it',cap:'the carrier capped','still held':'the carrier still held it after 8 s','returned by someone else':'a teammate returned it'};
  $('mInfo').innerHTML=d.mapName+', '+m+':'+String(sec).padStart(2,'0')+' into a ranked game · you are '+d.me.name+'\'s ball · chasers start where '+d.chasers[0].name+' and '+d.chasers[1].name+' were · '+
@@ -541,35 +563,72 @@ async function loadChaseMe(step){
 function restartChaseMe(){
  const d=M.d;if(!d)return;M.sim=new BSim(JSON.parse(JSON.stringify(d.map)));
  M.p=M.sim.addBall(d.me.team);M.sim.place(M.p,d.me.x,d.me.y,d.me.vx,d.me.vy);
- if(d.grab){M.sim.grabFlag(M.p,3-d.me.team);M.p.invincibleUntil=0;} // grab start: you hold their flag in the engine too
+ if(d.grab||d.kp){try{M.sim.grabFlag(M.p,3-d.me.team);}catch(e){} M.p.invincibleUntil=0;} /* some maps have no flag for that team: play on without it */ // grab start: you hold their flag in the engine too
  M.ch=d.chasers.map(c=>{const p=M.sim.addBall(c.team);M.sim.place(p,c.x,c.y,c.vx,c.vy);return{p,F:null,Ft:0,solo:null};});
+ M.missed=[false,false];M.prevSolo=[null,null];{const e=M.p.body.GetPosition();M.quad=M.ch.map(c=>{const p=c.p.body.GetPosition();return[p.x-e.x,p.y-e.y].map(v=>Math.abs(v)>.3?Math.sign(v):0);});}
  M.hist=[{x:d.me.x,y:d.me.y,vx:d.me.vx,vy:d.me.vy}];
- M.Fc=null;M.t=0;M.acc=0;M.state='count';M.countEnd=performance.now()+1500;$('card').style.display='none';}
+ M.Fc=null;M.tc=null;if($('mMode').value==='tuned')loadTunedP();M.t=0;M.acc=0;M.state='count';M.countEnd=performance.now()+1500;$('card').style.display='none';}
 function finishChaseMe(res){
  M.state='done';const d=M.d,s=(M.t/60).toFixed(2);
  fetch('chaseme',{method:'POST',body:JSON.stringify({id:d.id,result:res,ticks:M.t})}).catch(()=>{});
- const c=$('card');c.innerHTML='<h2>'+(res==='capped'?'Capped in '+s+' s':res==='returned'?'Returned at '+s+' s':'Popped at '+s+' s')+'</h2>R to try again · N for the next moment';c.style.display='block';}
+ const KP={escaped:'You got away at '+s+' s',swipes:'Both chasers missed their swipes: you got away at '+s+' s',killed:'Killed by a committed swipe at '+s+' s',blocked:'You ran into a chaser holding its spot at '+s+' s',bumped:'A chaser bumped you without committing (counts as your win) at '+s+' s',held:'They held you for 8 s'};
+ const c=$('card');c.innerHTML='<h2>'+(KP[res]||(res==='capped'?'Capped in '+s+' s':res==='returned'?'Returned at '+s+' s':'Popped at '+s+' s'))+'</h2>R to try again · N for the next moment';c.style.display='block';}
 function stepChaseMe(dt){
  if(M.state==='count'){const left=M.countEnd-performance.now();$('count').style.display=left>0?'block':'none';$('count').textContent=Math.ceil(left/500);if(left<=0){M.state='run';M.acc=0;}return;}
  if(M.state!=='run')return;M.acc+=dt*60;let n=0;
  while(M.acc>=1&&n<5){M.acc--;n++;
   setKeys(M.p,action());
   {const q=M.p.body.GetPosition(),v=M.p.body.GetLinearVelocity();M.hist.push({x:q.x,y:q.y,vx:v.x,vy:v.y});if(M.hist.length>60)M.hist.shift();}
-  if($('mMode').value==='contain'||$('mMode').value==='nets'){const k=$('mMode').value==='nets'?mNets():mContain();for(const c of M.ch)if(!c.p.dead)setKeys(c.p,k.has(c)?k.get(c):0);}
+  if($('mMode').value==='contain'||$('mMode').value==='nets'||$('mMode').value==='tuned'){const k=$('mMode').value==='nets'?mNets():$('mMode').value==='tuned'?mTuned():mContain();for(const c of M.ch)if(!c.p.dead)setKeys(c.p,k.has(c)?k.get(c):0);}
   else for(const c of M.ch)if(!c.p.dead)setKeys(c.p,mSteer(c));
   M.sim.tickOnce();M.t++;
+  if(M.d.kp){const r=kpRules();if(r){finishChaseMe(r);break;}continue;}
   const me=M.p.body.GetPosition();
   if(M.p.dead){finishChaseMe(M.ch.some(c=>!c.p.dead&&Math.hypot(c.p.body.GetPosition().x-me.x,c.p.body.GetPosition().y-me.y)<TOUCH2+.05)?'returned':'popped');break;}
   if(M.ch.some(c=>!c.p.dead&&Math.hypot(c.p.body.GetPosition().x-me.x,c.p.body.GetPosition().y-me.y)<TOUCH2)){finishChaseMe('returned');break;}
   if(Math.hypot(me.x-M.d.spot.x,me.y-M.d.spot.y)<TOUCH2){finishChaseMe('capped');break;}}
  if(M.acc>5)M.acc=0;}
+// kill-point rules (tune/game.js): the same results as the search
+const soloOf=j=>$('mMode').value==='tuned'?(M.ts&&M.ts[j]&&M.ts[j].solo)||null:M.ch[j].solo||null;
+function kpRules(){const d=M.d,L=d.line,A=d.area,q=M.p.body.GetPosition(),v=M.p.body.GetLinearVelocity();
+ for(let j=0;j<M.ch.length;j++){const c=M.ch[j];if(c.p.dead)continue;const p=c.p.body.GetPosition();if(Math.hypot(p.x-q.x,p.y-q.y)>=TOUCH2+(M.p.dead?.05:0))continue;
+  if(soloOf(j))return 'killed';const w=c.p.body.GetLinearVelocity(),dx=q.x-p.x,dy=q.y-p.y,dd=Math.hypot(dx,dy)||1;
+  return (-(v.x*dx+v.y*dy)/dd)>=((w.x*dx+w.y*dy)/dd)?'blocked':'bumped';}
+ // quadrants: crossing more than 0.3 m into another quadrant of yours is a swipe (missed: it didn't touch you)
+ for(let j=0;j<M.ch.length;j++){const c=M.ch[j];if(c.p.dead)continue;const p=c.p.body.GetPosition(),dd=[p.x-q.x,p.y-q.y];
+  const cw=c.p.body.GetLinearVelocity(),vc=[cw.x,cw.y],ve=[v.x,v.y]; // the chaser's swipe only when it did more of the moving across the line
+  for(let a=0;a<2;a++){if(!M.quad[j][a]){if(Math.abs(dd[a])>.3)M.quad[j][a]=Math.sign(dd[a]);continue;}if(dd[a]*M.quad[j][a]<-.3){const dir=-M.quad[j][a];if(vc[a]*dir>-ve[a]*dir)M.missed[j]=true;M.quad[j][a]=-M.quad[j][a];}}}
+ for(let j=0;j<M.ch.length;j++){const s=soloOf(j);if(M.prevSolo[j]&&s!==M.prevSolo[j])M.missed[j]=true;M.prevSolo[j]=s;}
+ if(M.p.dead)return 'popped'; // a touch kills too (the engine pops a tagged ball), so touches are judged first
+ if(M.ch.every((c,j)=>c.p.dead||M.missed[j]))return 'swipes';
+ let out;if(d.kind==='wall'){out=q.x*d.u[0]+q.y*d.u[1]<=wallRear()-.2;}
+ else{const ax=q.x/T_-L.x,ay=q.y/T_-L.y,a=ax*L.ux+ay*L.uy,cc=ax*L.ox+ay*L.oy;out=a>=A.face||a<=A.back-.475||cc>=A.out+.475;}
+ if(out&&M.ch.every(c=>c.p.dead||Math.hypot(c.p.body.GetPosition().x-q.x,c.p.body.GetPosition().y-q.y)>=d.sep))return 'escaped';
+ if(M.t>=d.limit)return 'held';return null;}
+const wallRear=()=>Math.min(...M.ch.filter(c=>!c.p.dead).map(c=>{const p=c.p.body.GetPosition();return p.x*M.d.u[0]+p.y*M.d.u[1];}));
+function drawWallRear(){ // the line you must get behind: through the rearmost chaser, across your run
+ const d=M.d,g=mv.g,[ux,uy]=d.u,r=wallRear()-.2,q=M.p.body.GetPosition(),k=q.x*ux+q.y*uy,bx=q.x-ux*(k-r),by=q.y-uy*(k-r),px=-uy,py=ux;
+ g.strokeStyle='#4dd';g.lineWidth=Math.max(3,mv.px/8);g.beginPath();g.moveTo(mv.P(bx-px*6),mv.P(by-py*6));g.lineTo(mv.P(bx+px*6),mv.P(by+py*6));g.stroke();}
+function drawKpArea(){const d=M.d,L=d.line,A=d.area,g=mv.g,T=T_,px=mv.px;
+ const pt=(a,c)=>[mv.P((L.x+L.ux*a+L.ox*c)*T),mv.P((L.y+L.uy*a+L.oy*c)*T)],f=A.face-.475,c=[pt(A.back,A.inner),pt(f,A.inner),pt(f,A.out),pt(A.back,A.out)];
+ g.fillStyle='rgba(255,200,0,.08)';g.beginPath();c.forEach(([x,y])=>g.lineTo(x,y));g.fill();
+ g.strokeStyle='#ff9a2a';g.setLineDash([px/4,px/6]);g.lineWidth=Math.max(2,px/12);g.beginPath();g.moveTo(...c[2]);g.lineTo(...c[3]);g.lineTo(...c[0]);g.lineTo(...c[1]);g.stroke();g.setLineDash([]);
+ g.strokeStyle='#ff0';g.lineWidth=Math.max(3,px/8);g.beginPath();g.moveTo(...c[1]);g.lineTo(...c[2]);g.stroke();}
+function drawQuads(){ // the lines through you that cut the map in four; each chaser's own quadrant tinted
+ const g=mv.g,q=M.p.body.GetPosition(),X=mv.P(q.x),Y=mv.P(q.y),W=mv.cv.width,H=mv.cv.height;
+ M.ch.forEach((c,j)=>{if(c.p.dead||!M.quad)return;const[a,b]=M.quad[j];g.fillStyle=M.missed[j]?'rgba(255,60,60,.07)':'rgba(255,255,255,.06)';
+  const x0=a>0?X:a<0?0:0,x1=a>0?W:a<0?X:W,y0=b>0?Y:b<0?0:0,y1=b>0?H:b<0?Y:H;g.fillRect(x0,y0,x1-x0,y1-y0);});
+ g.strokeStyle='rgba(255,255,255,.35)';g.lineWidth=1.5;g.setLineDash([6,6]);g.beginPath();g.moveTo(X,0);g.lineTo(X,H);g.moveTo(0,Y);g.lineTo(W,Y);g.stroke();g.setLineDash([]);}
 function drawChaseMe(){
- if(!M.d||!M.sim)return;mv.base();const tc=['','#ff4a4a','#4a9bff'];
- M.ch.forEach((c,j)=>{if(c.p.dead)return;const q=c.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.chasers[j].team],1,0,c.solo?'solo!':($('mMode').value==='nets'&&c.role)||'chaser');});
+ if(!M.d||!M.sim)return;mv.g.fillStyle='#111';mv.g.fillRect(0,0,mv.cv.width,mv.cv.height);mv.base();const tc=['','#ff4a4a','#4a9bff']; /* cleared first: off-map parts of the background are see-through */if(M.d.kp){if(M.d.area)drawKpArea();else drawWallRear();drawQuads();}
+ M.ch.forEach((c,j)=>{if(c.p.dead)return;const q=c.p.body.GetPosition(),sw=soloOf(j);mv.ball(q.x,q.y,tc[M.d.chasers[j].team],1,0,sw?'SWIPE':(M.missed&&M.missed[j]?'missed':($('mMode').value==='nets'&&c.role)||'chaser'));
+  if(sw){const g=mv.g;g.strokeStyle='#ff3b3b';g.lineWidth=Math.max(3,mv.px/10);g.beginPath();g.arc(mv.P(q.x),mv.P(q.y),mv.px*.65,0,7);g.stroke();}});
  const q=M.p.body.GetPosition();mv.ball(q.x,q.y,tc[M.d.me.team],1,action(),'you');
  const g=mv.g;g.strokeStyle='#fff';g.lineWidth=Math.max(2,mv.px/10);g.beginPath();g.arc(mv.P(q.x),mv.P(q.y),mv.px*.68,0,7);g.stroke();g.fillStyle='#fff';g.font='bold '+Math.max(11,mv.px/2)+'px sans-serif';g.fillText('⚑',mv.P(q.x)-mv.px*.25,mv.P(q.y)+mv.px*.2);
  $('mTime').textContent=(M.t/60).toFixed(2)+' s';}
 $('mMode').onchange=()=>{$('mMode').blur();restartChaseMe();};
+function eStart(k){$('mStart').value=k;document.querySelectorAll('#eRow button').forEach(x=>{const on=x.dataset.e===k;x.style.background=on?'#444':'';x.style.color=on?'#fff':'';x.style.fontWeight=on?'600':'';});M.i=0;M.d=null;M.state='load';$('card').style.display='none';}
+document.querySelectorAll('#eRow button').forEach(x=>x.onclick=()=>{x.blur();eStart(x.dataset.e);loadChaseMe();});
 $('mStart').onchange=()=>{$('mStart').blur();M.i=0;loadChaseMe();};
 addEventListener('keydown',e=>{if(tab!=='chaseme')return;const k=KEYMAP[e.code];if(k){held[k]=true;e.preventDefault();}
  if(e.code==='KeyR'&&M.d)restartChaseMe();if(e.code==='KeyN')loadChaseMe(1);if(e.code==='KeyB')loadChaseMe(-1);});
@@ -812,9 +871,122 @@ function frame(now){const dt=Math.min(.1,(now-last)/1000);last=now;
  if(tab==='play'){stepPlay(dt);drawPlay();}else $('count').style.display='none';
  if(tab==='watch'){stepWatch(dt);drawWatch();}
  if(tab==='chases'){stepChase(dt);drawChase();}
- if(tab==='chaseme'){stepChaseMe(dt);drawChaseMe();}
+ if(tab==='chaseme'){try{stepChaseMe(dt);drawChaseMe();}catch(e){console.error(e);if(M.state==='run'){M.state='done';const c=$('card');c.innerHTML='<h2>Something broke</h2>'+String(e.message||e)+'<br>R to try again · N for the next moment';c.style.display='block';}}}
  if(tab==='league'){stepLeague(dt);drawLeague();}
  requestAnimationFrame(frame);}
 addEventListener('resize',()=>{if(P.d)pv.layout();if(W.d)wv.layout();if(CH.d)cv_.layout();if(M.d)mv.layout();if(LG.d)lgv.layout();if(K.d){kv.layout();drawPinches();}});
 pickers();newPuzzle();requestAnimationFrame(frame);
+
+// ---------- tune contain: watch tune/tune.js search for better contain-chaser values ----------
+const tv=new View($('tc')),TU={games:[],list:[],i:0,g:null,t:0,maps:{},sel:null,data:null,liveKey:'',timer:null};
+const PDESC={lineV:'towards its quadrant lines: slowest it is allowed (m/s; 0 = no limit)',lineA:'towards its quadrant lines: only as fast as it can still stop before them at this braking (m/s/s)',closeLead:'1 = only the chaser on the side the carrier moves towards is held to the close limit; the other runs',adjM:'neighbouring quadrants: how far inside its own quadrant a chaser keeps its spot (m)',adj:'1 = always neighbouring quadrants of the carrier (never the same or diagonal ones)',wallNear:'carrier this close to a wall along its motion (m): chasers ease off (0 = off)',wallV:'their top speed while easing off (m/s)',brake:'closing in: only as fast as a chaser can still slow to the carrier\'s speed on arrival (m/s/s; 0 = off)',lean:'presser: sits this much closer per m/s of carrier speed (s), since a fast carrier can\'t turn back',close:'every chaser not swiping: at most this much faster than the carrier (m/s), so they keep pace instead of racing in',cushion:'presser: distance behind the carrier (m)',r1:'cutter: near spot distance from the carrier (m)',r2:'cutter: far spot distance (m)',spread:'cutter: how far round from straight ahead it looks (steps of 22.5°)',
+ homeW:'cutter: extra weight on room towards home',momW:'cutter: extra weight on room along the carrier\'s movement',distW:'cutter: cost per metre it has to move to a spot',rayMax:'cutter: how far it measures room (m)',
+ obstR:'how wide a chaser blocks the carrier\'s room (m)',gain:'how hard chasers pull onto their spot',vmax:'top speed chasers use while shadowing (m/s)',soloTicks:'how far ahead it looks for a certain tag (ticks, 60 = 1 s)',
+ sideMin:'cutter must stand on the way-home side: −1 anywhere (old), 0 not behind, higher = more squarely in the way',route:'"towards home" along the route round walls (1) or the straight line to the flag (0)',
+ quadKeep:'keep each chaser\'s spots inside its own quadrant of the carrier (1): crossing into another quadrant counts as a swipe',quadM:'how far inside its quadrant it keeps its spots (m)',coast:'speed band (m/s) where a chaser lets go of the keys instead of pushing (bigger = smoother, less overshoot)',cutVmax:'the containing chaser\'s top speed once near its spot (m/s; full speed is 2.5)',calmR:'how near its spot (m) the containing chaser slows to that speed',pairSolo:'pair swipe (1): also commit to a near-certain tag when the teammate is on the other side of the carrier to catch the dodge',pairR:'pair swipe: how near certain it must be (m of slack)',pairD:'pair swipe: how close the teammate must be to the carrier (m)',predict:'chasers see the carrier 0.2 s late: how much of that they make up by carrying it forward on its momentum (0 none, 1 all)',wallSolo:'certain-tag test counts walls next to the carrier as blocking its dodge (1), or pretends it can dodge through them (0)',split:'SPLIT mode (1): one chaser races ahead onto the way home (never past the contain line), the other presses',minLead:'split: nearest point on the route home it aims for (tiles ahead of the carrier)',maxLead:'split: furthest point it will race to (tiles)',
+ margin:'split: how much sooner than the carrier it must reach a point (m)',boxR:'split: once ahead and this close (m), it boxes in like the cutter',pressSide:'split: presser comes from straight behind (0) or the side away from the ahead chaser (1)'};
+function openTune(){refreshTune();if(!TU.timer)TU.timer=setInterval(()=>{if(tab==='tune')refreshTune();},3000);if(!TU.raf)tuneFrame();}
+const pct=(p)=>{const n=p.escape+p.return+p.hold+(p.bump||0);return n?Math.round(100*(p.return+p.hold)/n)+'%':'–';};
+async function refreshTune(){
+ const d=await (await fetch('tune/status')).json();TU.data=d;const st=d.status,tr=d.trials;
+ if(!st){$('tPhase').textContent='Not started';return;}
+ $('tPhase').textContent=st.phase==='done'?'Finished':st.phase==='searching'?'Searching…':st.phase;
+ const base=tr.find(t=>t.id===0),best=d.best;
+ $('tSum').innerHTML=tr.length+' of '+st.max+' settings tried · each plays '+st.games+' games ('+st.starts+' kill-point starts × '+st.escapers.length+' escapers)'+
+  (base?' · current page values score <b>'+base.score.toFixed(3)+'</b>':'')+(best?' · best <b style="color:#5f5">'+best.score.toFixed(3)+'</b> (#'+best.id+', '+best.how+')':'');
+ // chart
+ let run=-1;const pts=tr.slice().sort((a,b)=>a.id-b.id),line=pts.map(t=>{run=Math.max(run,t.score);return{x:t.id,y:run};});
+ const col=t=>t.id<=1?'#ff6b6b':t.how==='random'?'#888':'#6bb5ff';
+ chart('tChart',{type:'scatter',data:{datasets:[{label:'settings (red = page values, grey = random, blue = changed from a good one)',data:pts.map(t=>({x:t.id,y:t.score,id:t.id})),pointBackgroundColor:pts.map(col),pointRadius:4},
+  {label:'best so far',type:'line',data:line,borderColor:'#5f5',pointRadius:0,stepped:true}]},
+  options:{animation:false,onClick:(e,els)=>{const el=els.find(x=>x.datasetIndex===0);if(el){TU.sel=pts[el.index];drawTuneTables();}},
+   scales:{x:{title:{display:true,text:'setting #'},ticks:{color:'#999'}},y:{title:{display:true,text:'score (1 = stops everything)'},ticks:{color:'#999'}}},plugins:{legend:{labels:{color:'#ccc'}}}}});
+ $('tRun').innerHTML=st.running.length?'<b>Testing now:</b><br>'+st.running.map(r=>'#'+(r.id>=1e6?Math.floor((r.id-1e6)/10):r.id)+' ('+r.how+'): '+r.done+(r.id<1e6?' / '+st.games:'')+' games').join('<br>'):'';
+ drawTuneTables();
+ if($('tSrc').value==='live'){const g=await (await fetch('tune/games?which=live')).json();if(g&&g.frames){const k=g.trial+':'+g.seed+':'+g.escaper;if(k!==TU.liveKey&&(!TU.g||TU.t>=TU.g.frames.length-1+20||TU.g.trial===undefined)){TU.liveKey=k;showTuneGame(g);}}}
+}
+function drawTuneTables(){const d=TU.data;if(!d)return;const tr=d.trials,base=tr.find(t=>t.id===0),best=d.best,sel=TU.sel,st=d.status;
+ const cols=[['current page values',base],['best so far'+(best?' (#'+best.id+')':''),best]];if(sel&&(!best||sel.id!==best.id)&&sel.id!==0)cols.push(['clicked: #'+sel.id+' ('+sel.how+')',sel]);
+ const esc=st?st.escapers:[];
+ $('tEsc').innerHTML='<table style="border-collapse:collapse;font-size:13px"><tr><td></td>'+cols.map(c=>'<th style="padding:2px 10px">'+c[0]+'</th>').join('')+'</tr>'+
+  esc.map(e=>'<tr><td>'+e+'</td>'+cols.map(c=>'<td style="padding:2px 10px;text-align:center">'+(c[1]?pct(c[1].per[e])+' <span class="dim">('+c[1].per[e].escape+' escaped, '+(c[1].per[e].bump||0)+' bumps)</span>':'–')+'</td>').join('')+'</tr>').join('')+
+  '<tr><td>score</td>'+cols.map(c=>'<td style="padding:2px 10px;text-align:center"><b>'+(c[1]?c[1].score.toFixed(3):'–')+'</b></td>').join('')+'</tr></table>';
+ const ks=Object.keys(PDESC);
+ $('tParams').innerHTML='<table style="border-collapse:collapse;font-size:13px"><tr><th style="text-align:left">value</th>'+cols.map(c=>'<th style="padding:2px 10px">'+c[0]+'</th>').join('')+'<th style="padding:2px 10px">range tried</th><th style="text-align:left">what it does</th></tr>'+
+  ks.map(k=>{const v=c=>c[1]?c[1].params[k]:'–',r=st&&st.ranges[k];return '<tr><td><code>'+k+'</code></td>'+cols.map(c=>{const ch=c[1]&&base&&c[1]!==base&&c[1].params[k]!==base.params[k];return '<td style="padding:2px 10px;text-align:center'+(ch?';color:#ffd34d':'')+'">'+v(c)+'</td>';}).join('')+
+   '<td style="padding:2px 10px;text-align:center" class="dim">'+(r==='flag'?'0 / 1':r?r[0]+' – '+r[1]:'')+'</td><td class="dim">'+PDESC[k]+'</td></tr>';}).join('')+'</table>';
+ const f=d.final;$('tFinal').innerHTML=f?'<b>Final check on '+f.starts+' new starts</b> (never used in the search; a big drop means the score was luck):<br>'+
+  f.results.map(r=>'#'+r.id+': search score '+r.trainScore.toFixed(3)+' → new starts <b>'+r.score.toFixed(3)+'</b> · '+Object.entries(r.per).map(([e,p])=>e+' '+pct(p)).join(', ')).join('<br>'):'';}
+async function loadTuneGames(){const w=$('tSrc').value;if(w==='live'){TU.liveKey='';refreshTune();return;}
+ TU.games=await (await fetch('tune/games?which='+w)).json();filterTune();}
+function filterTune(){const e=$('tEf').value,r=$('tRf').value;TU.list=TU.games.filter(g=>(!e||g.escaper===e)&&(!r||g.result===r));TU.i=0;if(TU.list.length)showTuneGame(TU.list[0]);else $('tGame').textContent='no games';}
+async function showTuneGame(g){if(!TU.maps[g.key])TU.maps[g.key]=await (await fetch('tune/map?key='+g.key)).json();const m=TU.maps[g.key];
+ TU.g=g;TU.t=0;TU.last=performance.now();TU.paused=false;$('tPlay').textContent='pause';tuneWindow(g,m);
+ const R={bump:'BUMPED (a touch that wasn\'t a guaranteed kill: counts as a loss)',escape:'escaped'+({front:' past the bump',back:' out the back',out:' out into the open',swipe:' (dodged a swipe)'}[g.how]||''),return:({blocked:'blocked (ran into a chaser holding its spot)',pop:'popped on spikes'}[g.how]||'killed (guaranteed)'),hold:'held 8 s'};
+ $('tGame').innerHTML=($('tSrc').value==='live'?'setting #'+g.trial+' · ':(TU.i+1)+' of '+TU.list.length+' · ')+m.name+' · start '+g.seed+' · escaper <b>'+g.escaper+'</b> · <b style="color:'+(g.result==='escape'?'#ff6b6b':'#5f5')+'">'+(R[g.result]||g.result)+(g.kind==='wall'?' · <span style="color:#4dd">run-into-a-wall test</span> (cyan = the line to get behind)':'')+'</b> at '+(g.ticks/60).toFixed(2)+' s';}
+// zoomed view: only the part of the map the game used (every ball position, the line and the target, plus a margin)
+const tuneBox=g=>{const A=g.area,f=A.face-0.475,b=A.back;return[[b,A.inner],[f,A.inner],[f,A.out],[b,A.out]];}; // area corners, lane terms (tiles)
+function tuneWindow(g,m){const T=0.4,L=g.line,xs=[],ys=[];
+ for(const f of g.frames)for(const k of[0,2,4])if(f[k]>-5){xs.push(f[k]/T);ys.push(f[k+1]/T);}
+ if(L){const fx=L.x+L.ux*(L.face-0.475),fy=L.y+L.uy*(L.face-0.475);xs.push(fx,fx+L.ox*6,g.tgt.x/T);ys.push(fy,fy+L.oy*6,g.tgt.y/T);}
+ if(g.wall){xs.push(g.wall.x/T);ys.push(g.wall.y/T);}
+ if(L&&g.area)for(const[a,c]of tuneBox(g))xs.push(L.x+L.ux*a+L.ox*c),ys.push(L.y+L.uy*a+L.oy*c);
+ let x0=Math.min(...xs)-3,x1=Math.max(...xs)+3,y0=Math.min(...ys)-3,y1=Math.max(...ys)+3;
+ const cv=$('tc'),W=cv.parentElement.clientWidth-24||1000,H=Math.max(360,innerHeight-cv.getBoundingClientRect().top-16);
+ // at least 18 x 11 tiles, and the box shaped like the screen
+ const need=(lo,hi,n)=>{const c=(lo+hi)/2,h=Math.max(hi-lo,n)/2;return[c-h,c+h];};[x0,x1]=need(x0,x1,18);[y0,y1]=need(y0,y1,11);
+ if((x1-x0)/(y1-y0)<W/H)[x0,x1]=need(x0,x1,(y1-y0)*W/H);else[y0,y1]=need(y0,y1,(x1-x0)*H/W);
+ const px=Math.min(W/(x1-x0),H/(y1-y0));cv.width=Math.round((x1-x0)*px);cv.height=Math.round((y1-y0)*px);
+ const bg=document.createElement('canvas');bg.width=cv.width;bg.height=cv.height;const bgc=bg.getContext('2d');bgc.fillStyle='#111';bgc.fillRect(0,0,bg.width,bg.height);
+ bgc.save();bgc.translate(-(x0+.5)*px,-(y0+.5)*px);
+ for(let x=Math.max(0,Math.floor(x0));x<=Math.min(m.tiles.length-1,Math.ceil(x1));x++)for(let y=Math.max(0,Math.floor(y0));y<=Math.min(m.tiles[0].length-1,Math.ceil(y1));y++)tileDraw(bgc,m.tiles[x][y],x,y,px);
+ bgc.strokeStyle='rgba(255,255,255,.05)';bgc.lineWidth=1;for(let x=Math.floor(x0);x<=Math.ceil(x1);x++){bgc.beginPath();bgc.moveTo(x*px,y0*px);bgc.lineTo(x*px,(y1+1)*px);bgc.stroke();}
+ for(let y=Math.floor(y0);y<=Math.ceil(y1);y++){bgc.beginPath();bgc.moveTo(x0*px,y*px);bgc.lineTo((x1+1)*px,y*px);bgc.stroke();}
+ bgc.restore();TU.win={x0,y0,px,bg};}
+function tuneFrame(){TU.raf=requestAnimationFrame(tuneFrame);const now=performance.now(),dt=(now-(TU.last||now))/1000;TU.last=now;
+ if(tab!=='tune'||!TU.g||!TU.win)return;const g=TU.g,fr=g.frames,{x0,y0,px,bg}=TU.win,cv=$('tc'),gg=cv.getContext('2d');
+ if(!TU.paused&&!TU.dragging)TU.t+=dt*30*(+$('tSpd').value); // frames are every 2 ticks: 30 a second at real speed
+ if(TU.t>fr.length-1+30)TU.t=$('tSrc').value==='live'?fr.length-1+30:0; // a second on the last frame, then again (live: waits for the next game)
+ const T=0.4,P=(mx,my)=>[(mx/T-x0)*px,(my/T-y0)*px],i=Math.max(0,Math.min(Math.floor(TU.t),fr.length-1)),f=fr[i];
+ gg.drawImage(bg,0,0);
+ const L=g.line;
+ if(g.kind==='wall'&&g.u){ // the line to get behind (through the rearmost chaser, across the run) and the quadrant lines through the escaper
+  const[ux,uy]=g.u,cs=[2,4].filter(k=>f[k]>-5).map(k=>[f[k],f[k+1]]),r=Math.min(...cs.map(([x,y])=>x*ux+y*uy))-.2,k=f[0]*ux+f[1]*uy,bx=f[0]-ux*(k-r),by=f[1]-uy*(k-r);
+  const[a1,b1]=P(bx+uy*2.4,by-ux*2.4),[a2,b2]=P(bx-uy*2.4,by+ux*2.4);gg.strokeStyle='#4dd';gg.lineWidth=Math.max(3,px/8);gg.beginPath();gg.moveTo(a1,b1);gg.lineTo(a2,b2);gg.stroke();
+  const[X,Y]=P(f[0],f[1]);gg.strokeStyle='rgba(255,255,255,.35)';gg.lineWidth=1.5;gg.setLineDash([6,6]);gg.beginPath();gg.moveTo(X,0);gg.lineTo(X,cv.height);gg.moveTo(0,Y);gg.lineTo(cv.width,Y);gg.stroke();gg.setLineDash([]);}
+ if(L){const fx=(L.x+L.ux*(L.face-0.475))*T,fy=(L.y+L.uy*(L.face-0.475))*T,[a1,b1]=P(fx-L.ox*T,fy-L.oy*T),[a2,b2]=P(fx+L.ox*T*10,fy+L.oy*T*10);
+ if(g.area){const c=tuneBox(g).map(([a,cc])=>P((L.x+L.ux*a+L.ox*cc)*T,(L.y+L.uy*a+L.oy*cc)*T));
+  gg.fillStyle='rgba(255,200,0,.07)';gg.beginPath();c.forEach(([x,y])=>gg.lineTo(x,y));gg.fill();
+  gg.strokeStyle='#ff9a2a';gg.setLineDash([px/4,px/6]);gg.lineWidth=Math.max(2,px/12);gg.beginPath();gg.moveTo(...c[2]);gg.lineTo(...c[3]);gg.lineTo(...c[0]);gg.lineTo(...c[1]);gg.stroke();gg.setLineDash([]);
+  gg.strokeStyle='#ff0';gg.lineWidth=Math.max(3,px/8);gg.beginPath();gg.moveTo(...c[1]);gg.lineTo(...c[2]);gg.stroke();}
+ else{gg.strokeStyle='#ff0';gg.lineWidth=Math.max(3,px/8);gg.beginPath();gg.moveTo(a1,b1);gg.lineTo(a2,b2);gg.stroke();}}
+ for(const q of[g.tgt,g.back])if(q){const[tx,ty]=P(q.x,q.y);gg.fillStyle='#3f3';circ(gg,tx,ty,Math.max(4,px*.12));}
+ const tm=g.team,cc=tm===1?C.s:C.b,oc=tm===1?C.b:C.s,r=px*.475;
+ const trail=(k,col,al)=>{gg.strokeStyle=col;gg.globalAlpha=al;gg.lineWidth=Math.max(2,px/14);gg.beginPath();for(let j=0;j<=i;j++){if(fr[j][k]<-5)break;const[x,y]=P(fr[j][k],fr[j][k+1]);gg.lineTo(x,y);}gg.stroke();gg.globalAlpha=1;};
+ trail(2,oc,.35);trail(4,oc,.35);trail(0,cc,.7);
+ const ball=(x,y,col,lab)=>{const[X,Y]=P(x,y);gg.fillStyle=col;circ(gg,X,Y,r);gg.strokeStyle='#000';gg.lineWidth=2;gg.stroke();
+  if(i>0){const p=fr[i-1];} if(lab){gg.fillStyle='#fff';gg.font='bold '+Math.max(13,px/2.6)+'px sans-serif';gg.fillText(lab,X+r+4,Y-r);}return[X,Y];};
+ // velocity arrows (from the frame before)
+ const arrow=(k)=>{if(i<1||f[k]<-5||fr[i-1][k]<-5)return;const vx=(f[k]-fr[i-1][k])*30,vy=(f[k+1]-fr[i-1][k+1])*30,[X,Y]=P(f[k],f[k+1]);
+  gg.strokeStyle='rgba(255,255,255,.8)';gg.lineWidth=Math.max(2,px/16);gg.beginPath();gg.moveTo(X,Y);gg.lineTo(X+vx/T*px*.3,Y+vy/T*px*.3);gg.stroke();};
+ for(const k of[2,4])if(f[k]>-5){const sw=f[6+(k-2)/2];const[X,Y]=ball(f[k],f[k+1],oc,(k===2?'chaser 1':'chaser 2')+(sw?' SWIPE':''));arrow(k);
+  if(sw){gg.strokeStyle='#ff3b3b';gg.lineWidth=Math.max(3,px/10);gg.beginPath();gg.arc(X,Y,r*1.35,0,7);gg.stroke();}}
+ const[X,Y]=ball(f[0],f[1],cc,g.escaper);arrow(0);gg.font=Math.round(r*1.2)+'px sans-serif';gg.fillStyle='#fff';gg.fillText('⚑',X-r*.45,Y+r*.4);
+ if(i>=fr.length-1){gg.fillStyle=g.result==='escape'||g.result==='bump'?'#ff6b6b':'#5f5';gg.font='bold '+Math.max(22,px*.8)+'px sans-serif';gg.fillText(g.result==='escape'?'ESCAPED'+({front:' past the bump',back:' out the back',out:' out into the open',swipe:': dodged a swipe'}[g.how]||''):g.result==='return'?(g.how==='blocked'?'BLOCKED (ran into a chaser holding its spot)':g.how==='pop'?'POPPED on spikes':'KILLED (guaranteed)'):g.result==='bump'?'BUMPED (not a guaranteed kill)':'HELD',16,Math.max(30,px));}
+ $('tClock').textContent=(Math.min(i*2,g.ticks)/60).toFixed(2)+' s';if(!TU.dragging)$('tScrub').value=Math.round(1000*i/Math.max(1,fr.length-1));}
+$('tPlay').onclick=()=>{TU.paused=!TU.paused;$('tPlay').textContent=TU.paused?'play':'pause';};
+$('tScrub').oninput=()=>{if(!TU.g)return;TU.dragging=true;TU.t=+$('tScrub').value/1000*(TU.g.frames.length-1);};$('tScrub').onchange=()=>{TU.dragging=false;};
+addEventListener('keydown',e=>{if(tab!=='tune'||!TU.g)return;if(e.code==='Space'){e.preventDefault();$('tPlay').click();}
+ if(e.code==='ArrowRight'||e.code==='ArrowLeft'){e.preventDefault();TU.paused=true;$('tPlay').textContent='play';TU.t=Math.max(0,Math.min(TU.g.frames.length-1,Math.floor(TU.t)+(e.code==='ArrowRight'?1:-1)));}});
+addEventListener('resize',()=>{if(TU.g&&TU.maps[TU.g.key])tuneWindow(TU.g,TU.maps[TU.g.key]);});
+$('tSrc').onchange=loadTuneGames;$('tEf').onchange=$('tRf').onchange=()=>{if($('tSrc').value!=='live')filterTune();};
+$('tPrev').onclick=()=>{if(TU.list.length){TU.i=(TU.i-1+TU.list.length)%TU.list.length;showTuneGame(TU.list[TU.i]);}};
+$('tNext').onclick=()=>{if(TU.list.length){TU.i=(TU.i+1)%TU.list.length;showTuneGame(TU.list[TU.i]);}};
+$('tUse').onclick=()=>{$('mMode').value='tuned';document.querySelector('#tabs button[data-t="chaseme"]').click();};
+// Chase me with the tuned values (tune/contain.js, same code the search runs; best values fetched when a moment starts)
+let tunedP=null;async function loadTunedP(){try{const d=await (await fetch('tune/status')).json();const np=d.best?d.best.params:null;if(M.state!=='run'){tunedP=np;M.tc=null;$('eWho').textContent=d.best?'Chasers: setting #'+d.best.id+' (stops '+Math.round(d.best.score*100)+'% in the tests)':'Chasers: page values (no search results yet)';}}catch(e){}}
+function mTuned(){const h=M.hist,f=h[Math.max(0,h.length-1-REACT)];
+ if(!M.tc){M.tc=TuneContain.makeContain({tiles:M.sim.tiles,home:TuneContain.field(M.sim.tiles,Math.round(M.d.spot.x/T_),Math.round(M.d.spot.y/T_)),spot:M.d.spot,react:REACT,line:M.d.kp?M.d.line:null},tunedP||{});M.ts=[];}
+ const chs=M.ch.map(c=>{const q=c.p.body.GetPosition(),w=c.p.body.GetLinearVelocity();return{x:q.x,y:q.y,vx:w.x,vy:w.y,dead:!!c.p.dead};});
+ const k=M.tc(M.t,f,chs,M.ts),out=new Map();M.ch.forEach((c,i)=>out.set(c,k[i]));return out;}
 </script></body></html>

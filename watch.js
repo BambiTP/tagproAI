@@ -410,6 +410,14 @@ http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x'), seed = parseInt(u.searchParams.get('seed'), 10);
   try {
     if (u.pathname === '/') return send(res, 200, fs.readFileSync(path.join(__dirname, 'watch.html')), 'text/html');
+    // ~/chase-playground (chase and escape bots), shown in the "Chase & escape" tab
+    if (u.pathname.startsWith('/chase/')) {
+      const root = path.join(require('os').homedir(), 'chase-playground'), rel = path.normalize(u.pathname.slice(7));
+      const file = path.join(root, rel);
+      if (!/^(ui|src|engine|bots)\/[\w.-]+\.(html|js)$|^index\.js$/.test(rel) || !file.startsWith(root + path.sep) || !fs.existsSync(file))
+        return send(res, 404, { error: 'not found' });
+      return send(res, 200, fs.readFileSync(file), file.endsWith('.html') ? 'text/html' : 'text/javascript');
+    }
     if (u.pathname.startsWith('/engine/') && ENGINE[u.pathname.slice(8)])
       return send(res, 200, fs.readFileSync(path.join(__dirname, 'engine', u.pathname.slice(8))), 'text/javascript');
     if (u.pathname === '/current') {
@@ -507,6 +515,28 @@ addEventListener('dragover',(e)=>e.preventDefault());addEventListener('drop',(e)
         fs.writeFileSync(mf, JSON.stringify(marks)); send(res, 200, { ok: true }); } catch (e) { send(res, 400, { error: 'bad' }); } });
       return;
     }
+    // tune contain: the search's progress (tune/tune.js writes tune/state/), its games, maps, and the shared chaser code
+    if (u.pathname.startsWith('/tune/')) {
+      const TD = path.join(__dirname, 'tune', 'state'), rd = (f, d) => { try { return JSON.parse(fs.readFileSync(path.join(TD, f), 'utf8')); } catch (e) { return d; } };
+      if (u.pathname === '/tune/contain.js') return send(res, 200, fs.readFileSync(path.join(__dirname, 'tune', 'contain.js')), 'text/javascript');
+      if (u.pathname === '/tune/status') {
+        let trials = []; try { trials = fs.readFileSync(path.join(TD, 'trials.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch (e) {}
+        return send(res, 200, { status: rd('status.json', null), trials, best: rd('best.json', null), final: rd('final.json', null) });
+      }
+      if (u.pathname === '/tune/games') { const w = u.searchParams.get('which'); return send(res, 200, w === 'live' ? rd('live.json', null) : rd(w === 'base' ? 'base-games.json' : 'best-games.json', [])); }
+      if (u.pathname === '/tune/start') { // one of the search's starts (tune/game.js setup: kill points, or ?kind=wall), for Chase me
+        const kind = u.searchParams.get('kind') === 'wall' ? 'wall' : 'kp';
+        const TG = require('./tune/game'), n = 100, i = ((parseInt(u.searchParams.get('i'), 10) || 0) % n + n) % n, R = TG.setup(i + 1, kind), { line, area } = R;
+        const g = { ca: R.ca, ch: R.ch, W: R.W, team: R.team, key: R.key };
+        const st = (p) => { const q = p.body.GetPosition(), v = p.body.GetLinearVelocity(); return { x: q.x, y: q.y, vx: v.x, vy: v.y }; };
+        const D = g.W.home[g.team]; let spot = null; for (let x = 0; x < D.length && !spot; x++) for (let y = 0; y < D[0].length; y++) if (D[x][y] === 0) { spot = { x: x * N.TILE, y: y * N.TILE }; break; }
+        const map = JSON.parse(JSON.stringify(getMap(g.key)));
+        return send(res, 200, { i, count: n, id: (kind === 'wall' ? 'wall-' : 'kp-') + (i + 1) + '-0-0', kp: true, kind, u: R.info.u || null, wall: R.info.wall || null, mapName: (map.info && map.info.name) || g.key, t0: 0, map, tile: N.TILE, touchR: N.BALL_R,
+          me: { ...st(g.ca), team: g.team, name: 'you' }, chasers: g.ch.map((p, j) => ({ ...st(p), team: 3 - g.team, name: 'chaser ' + (j + 1) })), spot, line, area, sep: 1.0, limit: TG.LIMIT });
+      }
+      if (u.pathname === '/tune/map') { const key = u.searchParams.get('key'); if (!/^\w+$/.test(key || '')) return send(res, 400, { error: 'bad key' });
+        const m = getMap(key); return send(res, 200, { tiles: m.tiles, name: (m.info && m.info.name) || key, tile: N.TILE }); }
+    }
     // hold vs league: a league start (league/env.js) and the latest chaser network, for playing the holder in the browser
     if (u.pathname === '/league' && req.method === 'GET') {
       const E = require('./league/env'), g = new E.Game(parseInt(u.searchParams.get('seed'), 10) || Date.now() % 1e9).reset();
@@ -521,7 +551,7 @@ addEventListener('dragover',(e)=>e.preventDefault());addEventListener('drop',(e)
       let body = '';
       req.on('data', (c) => { body += c; if (body.length > 2e3) req.destroy(); });
       req.on('end', () => { try { const r = JSON.parse(body);
-        if (typeof r.id !== 'string' || !/^([0-9a-f]{8}|grab)-\d+-\d+-\d+$/.test(r.id) || !['capped', 'returned', 'popped'].includes(r.result) || !Number.isInteger(r.ticks)) throw new Error('bad');
+        if (typeof r.id !== 'string' || !/^([0-9a-f]{8}|grab|kp|wall)-\d+-\d+-\d+$/.test(r.id) || !['capped', 'returned', 'popped', 'escaped', 'killed', 'blocked', 'bumped', 'held', 'swipes'].includes(r.result) || !Number.isInteger(r.ticks)) throw new Error('bad');
         fs.appendFileSync(path.join(__dirname, 'runs', 'chaseme.jsonl'), JSON.stringify({ id: r.id, result: r.result, ticks: r.ticks, at: Date.now() }) + '\n');
         send(res, 200, { ok: true }); } catch (e) { send(res, 400, { error: 'bad' }); } });
       return;
