@@ -1,3 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TagPro Chase Bots</title>
+<style>
+  :root { --bg: #111318; --panel: #1a1d24; --line: #2a2e38; --text: #e8eaee; --muted: #9aa0ad; --blue: #4a7ee8; --red: #e8524a; --accent: #5aa2ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; display: flex; flex-direction: column; }
+  header { padding: 14px 18px 6px; }
+  h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); }
+  .controls label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+  select, button { font: inherit; color: var(--text); background: #252935; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  main { flex: 1; min-height: 0; display: flex; gap: 0; }
+  .stage { flex: 1; min-width: 0; position: relative; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .banner { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); background: rgba(10,11,14,.88); border: 1px solid var(--line); border-radius: 10px; padding: 12px 22px; font-size: 20px; font-weight: 600; display: none; pointer-events: none; text-align: center; }
+  aside { width: 320px; flex: none; border-left: 1px solid var(--line); background: var(--panel); padding: 14px 16px; overflow-y: auto; }
+  aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 16px 0 6px; }
+  aside h2:first-child { margin-top: 0; }
+  .who { margin: 0 0 10px; }
+  .who b { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .who .doing { display: block; color: var(--muted); font-size: 13.5px; margin-left: 18px; }
+  .score { font-variant-numeric: tabular-nums; }
+  .legend div { margin: 4px 0; font-size: 13.5px; color: var(--muted); }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 6px; vertical-align: -2px; }
+  .mapinfo { font-size: 12.5px; color: var(--muted); }
+  @media (max-width: 800px) { main { flex-direction: column; } aside { width: auto; border-left: 0; border-top: 1px solid var(--line); } .stage { min-height: 60vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>TagPro chase bots</h1>
+  <p>Red chasers try to tag the blue runner. Every ball has TagPro's exact movement. Each game is on a brand new random map. Pick a ball to drive it yourself with the arrow keys.</p>
+</header>
+<div class="controls">
+  <label>Game <select id="mode"><option value="2v1">2 chasers vs 1 runner</option><option value="1v1">1 chaser vs 1 runner</option></select></label>
+  <label>You <select id="you"><option value="">just watch</option><option value="runner">play the runner</option><option value="chaser1">play a chaser</option></select></label>
+  <label>Speed <select id="speed"><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></label>
+  <button id="pause">Pause</button>
+  <button id="next">New game (N)</button>
+  <label><input type="checkbox" id="shade" checked> show who gets where first</label>
+</div>
+<main>
+  <div class="stage"><canvas id="c"></canvas><div class="banner" id="banner"></div></div>
+  <aside>
+    <h2>Right now</h2>
+    <div id="now"></div>
+    <h2>Score</h2>
+    <div class="score" id="score">No games finished yet.</div>
+    <h2>What you are seeing</h2>
+    <div class="legend">
+      <div><span class="sw" style="background:rgba(74,126,232,.45)"></span>Blue floor: the runner can get there before any chaser.</div>
+      <div><span class="sw" style="background:rgba(232,82,74,.45)"></span>Red floor: a chaser gets there first. When the blue is gone, the runner is trapped.</div>
+      <div><span class="sw" style="border:2px dashed #ccc"></span>Dashed line: where each bot is heading.</div>
+      <div><span class="sw" style="border:1px dotted #ccc"></span>Dotted cross through the runner: its four quadrants. When both chasers are close, each one guards a different quadrant.</div>
+      <div>A game ends with a tag, or after 30 seconds if the runner gets away.</div>
+    </div>
+    <h2>This map</h2>
+    <div class="mapinfo" id="mapinfo"></div>
+  </aside>
+</main>
+
+<!-- the engine and the bots, inlined by tools/build-page.js -->
+<script>
+  const MODS = {};
+  window.require = (p) => {
+    const name = p.split('/').pop().replace(/\.js$/, '');
+    if (name === 'chase-playground' || name === '..' || name === '.') return MODS.index;
+    if (!MODS[name]) throw new Error(`require('${p}'): not available here`);
+    return MODS[name];
+  };
+  const load = (name) => { MODS[name] = window.module.exports; };
+  window.module = { exports: {} };
+</script>
+<script>window.module = { exports: {} };
 // Box2DWeb exactly as bundled in the official TagPro client (global-game.js), extracted by tools/.
 (function () {
 var Box2D = {};
@@ -4525,3 +4606,1955 @@ for (void 0 === Box2D && (Box2D = {}), void 0 === Box2D.Collision && (Box2D.Coll
 delete Box2D.postDefs;
 if (typeof module !== "undefined" && module.exports) module.exports = Box2D; else globalThis.Box2D = Box2D;
 })();
+
+;load('box2d');</script>
+<script>window.module = { exports: {} };
+// rng.js - small seeded RNG (mulberry32) so maps, spawns and bots are reproducible.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+function makeRng(seed) {
+  if (typeof seed === 'function') return seed;
+  let a = (seed === undefined ? (Math.random() * 2 ** 32) : Number(seed)) >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+module.exports = { makeRng };
+})();
+
+;load('rng');</script>
+<script>window.module = { exports: {} };
+// maps.js - a map is { name, width, height, tiles } with tiles[x][y] = TagPro tile id
+// (column-major, like TagPro's own map packet). Only walls matter: 1 (square) and 1.1-1.4
+// (45 degree). 0 is empty space, anything else is open floor.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const WALLS = [1, 1.1, 1.2, 1.3, 1.4];
+const isWall = (t) => WALLS.includes(t);
+
+// One string per row:
+//   '#' wall   '.' floor   ' ' empty space
+//   45 degree walls, the wall half is the corner it points to:  '◣' or '1'  '◤' or '2'  '◥' or '3'  '◢' or '4'
+//   any letter: floor, listed in map.marks[letter] as [{x, y}] (handy spawn spots)
+const ASCII = { '#': 1, '.': 2, ' ': 0, '◣': 1.1, '◤': 1.2, '◥': 1.3, '◢': 1.4, 1: 1.1, 2: 1.2, 3: 1.3, 4: 1.4 };
+function fromAscii(rows, name = 'ascii') {
+  if (typeof rows === 'string') rows = rows.replace(/^\n+|\n+\s*$/g, '').split('\n');
+  rows = rows.map((r) => Array.from(r));
+  const H = rows.length, W = Math.max(...rows.map((r) => r.length));
+  const tiles = [], marks = {};
+  for (let x = 0; x < W; x++) {
+    tiles[x] = [];
+    for (let y = 0; y < H; y++) {
+      const c = rows[y][x] ?? ' ';
+      if (c in ASCII) tiles[x][y] = ASCII[c];
+      else if (/\p{L}/u.test(c)) { tiles[x][y] = 2; (marks[c] = marks[c] || []).push({ x, y }); }
+      else throw new Error(`ascii map: unknown character '${c}' at ${x},${y}`);
+    }
+  }
+  return { name, width: W, height: H, tiles, marks };
+}
+
+function toAscii(map) {
+  const ch = { 0: ' ', 1: '#', 1.1: '◣', 1.2: '◤', 1.3: '◥', 1.4: '◢' };
+  const rows = [];
+  for (let y = 0; y < map.height; y++) {
+    let s = '';
+    for (let x = 0; x < map.width; x++) { const t = map.tiles[x][y]; s += t in ch ? ch[t] : '.'; }
+    rows.push(s);
+  }
+  return rows.join('\n');
+}
+
+// row-major grid (grid[y][x]) of tile ids -> map
+function fromGrid(grid, name = 'grid') {
+  const H = grid.length, W = grid[0].length, tiles = [];
+  for (let x = 0; x < W; x++) { tiles[x] = []; for (let y = 0; y < H; y++) tiles[x][y] = grid[y][x]; }
+  return { name, width: W, height: H, tiles };
+}
+
+// where random spawns go: the largest connected area of open tiles, so every ball can reach
+// every other one. [{x, y}] in tiles.
+function spawnTiles(map) {
+  const W = map.width, H = map.height, t = map.tiles;
+  const open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && t[x][y] !== 0 && !isWall(t[x][y]);
+  const seen = Array.from({ length: W }, () => new Uint8Array(H));
+  let best = [];
+  for (let sx = 0; sx < W; sx++) for (let sy = 0; sy < H; sy++) {
+    if (seen[sx][sy] || !open(sx, sy)) continue;
+    const region = [], stack = [[sx, sy]];
+    seen[sx][sy] = 1;
+    while (stack.length) {
+      const [x, y] = stack.pop();
+      region.push({ x, y });
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (open(nx, ny) && !seen[nx][ny]) { seen[nx][ny] = 1; stack.push([nx, ny]); }
+      }
+    }
+    if (region.length > best.length) best = region;
+  }
+  return best.sort((a, b) => a.x - b.x || a.y - b.y);
+}
+
+module.exports = { fromAscii, toAscii, fromGrid, spawnTiles, isWall };
+})();
+
+;load('maps');</script>
+<script>window.module = { exports: {} };
+// mapgen.js - the BuildAMapWorkshop wall generator (github.com/BambiTP/BuildAMapWorkshop,
+// index.html: generateWalls, highlightTilesBetweenMatchingYs, Random45sSym), ported line for line
+// with Math.random swapped for a seeded RNG and the canvas drawing removed.
+//
+//   generateMap({ seed, width: 45, height: 45, randLeft: 0.5, randRight: 0.5, diagonals: 0.5 })
+//
+// width/height must be odd (the workshop's own inputs step by 2). diagonals is the workshop's
+// "rand45s" slider; 0 = no 45 degree walls (the workshop only adds them when you press "45's").
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { makeRng } = require('./rng');
+const { fromGrid } = require('./maps');
+
+// workshop tile ids (its tileColors) -> TagPro tile ids, matched by PNG colour
+const WORKSHOP_TO_TAGPRO = { 0: 0, 1: 1, 2: 2, 3: 10, 4: 14, 5: 15, 6: 5, 7: 11, 8: 12, 9: 23, 10: 3, 11: 4, 12: 16, 13: 6, 14: 1.4, 15: 1.1, 16: 1.3, 17: 1.2 };
+
+function generateWorkshopGrid(opts = {}) {
+  const random = makeRng(opts.seed);
+  const sizex = opts.width || 45, sizey = opts.height || 45;
+  if (sizex % 2 !== 1 || sizey % 2 !== 1 || sizex < 5 || sizey < 5) throw new Error('mapgen: width and height must be odd and at least 5');
+  const randLeft = opts.randLeft ?? 0.5, randRight = opts.randRight ?? 0.5;
+  const r45 = opts.diagonals ?? 0.5;
+  const Xo = -1, Xn = -1, Yo = -1, Yn = -1;
+
+  // ---- generateWalls ----
+  const grid = Array(sizey).fill().map(() => Array(sizex).fill(0));
+  const insideWalls = [];
+  let leftX = (sizex + 1) / 2 - 1;
+  let rightX = (sizex + 1) / 2 + 1;
+  let leftY = sizey - 1;
+  let rightY = sizey - 1;
+
+  grid[sizey - 1][(sizex - 1) / 2] = 1;
+  grid[0][(sizex - 1) / 2] = 1;
+  insideWalls.push({ x: (sizex - 1) / 2, y: 0 });
+  insideWalls.push({ x: (sizex - 1) / 2, y: sizey - 1 });
+
+  grid[sizey - 1][(sizex - 1) / 2 + 1] = 1;
+  grid[0][(sizex - 1) / 2 - 1] = 1;
+  insideWalls.push({ x: (sizex - 1) / 2 - 1, y: 0 });
+  insideWalls.push({ x: (sizex - 1) / 2 + 1, y: sizey - 1 });
+
+  grid[sizey - 1][(sizex - 1) / 2 + 2] = 1;
+  grid[0][(sizex - 1) / 2 - 2] = 1;
+  insideWalls.push({ x: (sizex - 1) / 2 - 2, y: 0 });
+  insideWalls.push({ x: (sizex - 1) / 2 + 2, y: sizey - 1 });
+
+  // left wall
+  while (leftX > 0 && leftY > (sizey - 1) / 2) {
+    if (random() <= randLeft) {
+      leftY--;
+      insideWalls.push({ x: leftX, y: leftY });
+      insideWalls.push({ x: sizex - leftX + Xo, y: sizey - leftY + Yo });
+    } else {
+      leftX--;
+      insideWalls.push({ x: leftX, y: leftY });
+      insideWalls.push({ x: sizex - leftX + Xo, y: sizey - leftY + Yo });
+    }
+    grid[leftY][leftX] = 1;
+    grid[sizey - leftY + Yo][sizex - leftX + Xo] = 1;
+  }
+  while (leftY > (sizey - 1) / 2) {
+    leftY--;
+    insideWalls.push({ x: leftX, y: leftY });
+    insideWalls.push({ x: sizex - leftX + Xo, y: sizey - leftY + Yo });
+    grid[leftY][leftX] = 1;
+    grid[sizey - leftY + Yo][sizex - leftX + Xo] = 1;
+  }
+  while (leftX > 0 && leftY === (sizey - 1) / 2) {
+    leftX--;
+    insideWalls.push({ x: leftX, y: leftY });
+    insideWalls.push({ x: sizex - leftX + Xo, y: sizey - leftY + Yo });
+    grid[leftY][leftX] = 1;
+    grid[sizey - leftY + Yo][sizex - leftX + Xo] = 1;
+  }
+
+  // right wall
+  while (rightX < sizex - 1 && rightY > Math.floor((sizey - 1) / 2)) {
+    if (random() <= randRight) {
+      rightY--;
+      insideWalls.push({ x: rightX, y: rightY });
+      insideWalls.push({ x: sizex - rightX + Xn, y: sizey - rightY + Yn });
+    } else {
+      rightX++;
+      insideWalls.push({ x: rightX, y: rightY });
+      insideWalls.push({ x: sizex - rightX + Xn, y: sizey - rightY + Yn });
+    }
+    grid[rightY][rightX] = 1;
+    grid[sizey - rightY + Yn][sizex - rightX + Xn] = 1;
+  }
+  if (rightX === sizex - 1 && rightY > Math.floor((sizey - 1) / 2)) {
+    while (rightY > Math.floor((sizey + 1) / 2)) {
+      rightY--;
+      insideWalls.push({ x: rightX, y: rightY });
+      insideWalls.push({ x: sizex - rightX + Xn, y: sizey - rightY + Yn });
+      grid[rightY][rightX] = 1;
+      grid[sizey - rightY + Yn][sizex - rightX + Xn] = 1;
+    }
+  }
+  if (rightY === Math.floor((sizey - 1) / 2) && rightX < sizex - 1) {
+    while (rightX < sizex - 1) {
+      rightX++;
+      insideWalls.push({ x: rightX, y: rightY });
+      insideWalls.push({ x: sizex - rightX + Xn, y: sizey - rightY + Yn });
+      grid[rightY][rightX] = 1;
+      grid[sizey - rightY + Yn][sizex - rightX + Xn] = 1;
+    }
+  }
+
+  // ---- highlightTilesBetweenMatchingYs: floor between walls on the same row ----
+  const wallSet = new Set(insideWalls.map((w) => w.x + ',' + w.y));
+  for (let i = 0; i < insideWalls.length; i++) {
+    for (let j = i + 1; j < insideWalls.length; j++) {
+      if (insideWalls[i].y === insideWalls[j].y) {
+        const y = insideWalls[i].y;
+        const x1 = Math.min(insideWalls[i].x, insideWalls[j].x);
+        const x2 = Math.max(insideWalls[i].x, insideWalls[j].x);
+        for (let x = x1 + 1; x < x2; x++) if (!wallSet.has(x + ',' + y)) grid[y][x] = 2;
+      }
+    }
+  }
+
+  // ---- Random45sSym: 45s in the top half, mirrored by 180 degree rotation ----
+  if (r45 > 0) {
+    const mapping180 = { 17: 14, 14: 17, 16: 15, 15: 16 };
+    const half = Math.floor(sizey / 2);
+    for (let i = 1; i < half; i++) {
+      for (let j = 1; j < sizex - 1; j++) {
+        if (grid[i][j] === 2) {
+          if (grid[i + 1] && grid[i + 1][j] === 1 && grid[i][j + 1] === 1 && grid[i + 1][j + 1] === 1) {
+            if (random() <= r45) grid[i][j] = 14;
+          } else if (grid[i + 1] && grid[i + 1][j] === 1 && grid[i + 1][j - 1] === 1 && grid[i][j - 1] === 1) {
+            if (random() <= r45) grid[i][j] = 15;
+          } else if (grid[i - 1][j] === 1 && grid[i - 1][j - 1] === 1 && grid[i][j - 1] === 1) {
+            if (random() <= r45) grid[i][j] = 17;
+          } else if (grid[i][j + 1] === 1 && grid[i - 1] && grid[i - 1][j + 1] === 1 && grid[i - 1][j] === 1) {
+            if (random() <= r45) grid[i][j] = 16;
+          }
+        }
+      }
+    }
+    for (let i = 0; i < half; i++) {
+      for (let j = 0; j < sizex; j++) {
+        if ([14, 15, 16, 17].includes(grid[i][j])) grid[sizey - 1 - i][sizex - 1 - j] = mapping180[grid[i][j]];
+      }
+    }
+  }
+  return grid; // grid[y][x], workshop tile ids
+}
+
+function generateMap(opts = {}) {
+  const grid = generateWorkshopGrid(opts).map((row) => row.map((t) => WORKSHOP_TO_TAGPRO[t]));
+  const map = fromGrid(grid, `workshop seed=${opts.seed}`);
+  map.generator = Object.assign({ width: 45, height: 45, randLeft: 0.5, randRight: 0.5, diagonals: 0.5 }, opts);
+  return map;
+}
+
+module.exports = { generateMap };
+})();
+
+;load('mapgen');</script>
+<script>window.module = { exports: {} };
+// islands.js - put wall islands in the open middle of a map, so a ball has something to loop around.
+//
+//   addIslands(map, { seed: 1, count: 4, size: [2, 4], shapes: ['square', 'diamond', 'plus', 'bar'],
+//                     clearance: 3, symmetric: true })
+//
+// Returns a new map. Each island goes on an open tile at least `clearance` tiles of floor away from
+// every wall, the edge of the map and every other island, so a ball can always get all the way
+// around it. symmetric places islands in pairs turned 180 degrees about the map centre, the way
+// the generated maps are themselves built. count is the total number of islands, mirrors included;
+// fewer go in when the map has no room left.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { makeRng } = require('./rng');
+const { isWall } = require('./maps');
+
+// tile offsets [dx, dy, tileId] for one island of `size` tiles across
+function shape(kind, size, rng) {
+  const out = [], r = Math.floor(size / 2), lo = -Math.floor((size - 1) / 2);
+  if (kind === 'square') {
+    for (let dx = lo; dx < lo + size; dx++) for (let dy = lo; dy < lo + size; dy++) out.push([dx, dy, 1]);
+  } else if (kind === 'diamond') {
+    // the edge tiles are 45s whose wall half faces the centre
+    const R = Math.max(1, r);
+    for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) {
+      const m = Math.abs(dx) + Math.abs(dy);
+      if (m > R) continue;
+      let t = 1;
+      if (m === R && dx && dy) t = dx > 0 ? (dy < 0 ? 1.1 : 1.2) : (dy < 0 ? 1.4 : 1.3);
+      out.push([dx, dy, t]);
+    }
+  } else if (kind === 'plus') {
+    const R = Math.max(1, r);
+    for (let d = -R; d <= R; d++) { out.push([d, 0, 1]); if (d) out.push([0, d, 1]); }
+  } else if (kind === 'bar') {
+    const long = Math.max(2, size + 1), across = rng() < 0.5;
+    for (let d = 0; d < long; d++) out.push(across ? [d - Math.floor(long / 2), 0, 1] : [0, d - Math.floor(long / 2), 1]);
+  } else throw new Error(`addIslands: unknown shape '${kind}'`);
+  return out;
+}
+
+// a 45's wall half turned 180 degrees: bottom-left <-> top-right, top-left <-> bottom-right
+const TURN = { 1: 1, 1.1: 1.3, 1.3: 1.1, 1.2: 1.4, 1.4: 1.2 };
+
+function addIslands(map, opts = {}) {
+  const rng = makeRng(opts.seed ?? 1);
+  const count = opts.count ?? 4, clearance = opts.clearance ?? 3, symmetric = opts.symmetric !== false;
+  const [smin, smax] = Array.isArray(opts.size) ? opts.size : [opts.size ?? 3, opts.size ?? 3];
+  const shapes = opts.shapes || ['square', 'diamond', 'plus', 'bar'];
+  const W = map.width, H = map.height;
+  const tiles = map.tiles.map((col) => col.slice());
+  const open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && tiles[x][y] !== 0 && !isWall(tiles[x][y]);
+
+  // floor tiles between each tile and the nearest non-floor tile (8 directions, so a square ring)
+  function clearField() {
+    const d = Array.from({ length: W }, () => new Int16Array(H).fill(-1));
+    let q = [];
+    for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) if (!open(x, y)) { d[x][y] = 0; q.push([x, y]); }
+    while (q.length) {
+      const next = [];
+      for (const [x, y] of q) for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H || d[nx][ny] !== -1) continue;
+        d[nx][ny] = d[x][y] + 1; next.push([nx, ny]);
+      }
+      q = next;
+    }
+    return d;
+  }
+
+  let placed = 0;
+  for (let attempt = 0; placed < count && attempt < count * 4; attempt++) {
+    const size = smin + Math.floor(rng() * (smax - smin + 1));
+    const cells = shape(shapes[Math.floor(rng() * shapes.length)], size, rng);
+    const reach = Math.max(...cells.map(([dx, dy]) => Math.max(Math.abs(dx), Math.abs(dy))));
+    const need = reach + clearance + 1;
+    const d = clearField();
+    const spots = [];
+    for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
+      if (d[x][y] < need) continue;
+      if (symmetric) {
+        const mx = W - 1 - x, my = H - 1 - y;
+        if (d[mx][my] < need) continue;
+        // the pair must not crowd each other either (or be the same island, right on the centre)
+        const gap = Math.max(Math.abs(mx - x), Math.abs(my - y));
+        if (gap > 0 && gap < 2 * reach + clearance + 1) continue;
+      }
+      spots.push([x, y]);
+    }
+    if (!spots.length) continue;
+    const [cx, cy] = spots[Math.floor(rng() * spots.length)];
+    for (const [dx, dy, t] of cells) tiles[cx + dx][cy + dy] = t;
+    placed++;
+    const mx = W - 1 - cx, my = H - 1 - cy;
+    if (symmetric && (mx !== cx || my !== cy) && placed < count) {
+      for (const [dx, dy, t] of cells) tiles[mx - dx][my - dy] = TURN[t];
+      placed++;
+    }
+  }
+  return { ...map, name: `${map.name || 'map'} + ${placed} islands`, tiles, islands: placed };
+}
+
+module.exports = { addIslands };
+})();
+
+;load('islands');</script>
+<script>window.module = { exports: {} };
+// world.js - TagPro balls moving on a map's walls, nothing else.
+//
+// The physics is tagpro-local's game server (engine/game.js) with everything but movement cut
+// out, kept in the same order so it is bit-for-bit identical to it:
+//   - same Box2D build as the official client (engine/box2d.js, unchanged)
+//   - walls: one static body per wall tile, square or 45 degree triangle, built column by column
+//   - balls: radius 0.19 m circles, created inactive at (-100, -100), then activated where they spawn
+//   - each tick: wake every ball, world.Step(1/60, 8, 3), THEN add key acceleration (the real
+//     server accelerates after the step)
+//   - a held key adds 0.025 m/s per tick on its axis while the speed on that axis is below 2.5 m/s
+//
+// Units: metres, m/s, radians. Tile (tx, ty) is centred on (tx * 0.4, ty * 0.4). TagPro px = m * 100.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const Box2D = require('../engine/box2d');
+const { makeRng } = require('./rng');
+const { spawnTiles } = require('./maps');
+const V = Box2D.Common.Math.b2Vec2;
+
+// TagPro's defaults (tagpro-local engine/constants.js, from the official client)
+const PHYSICS = {
+  TILE: 0.4,             // metres per tile
+  STEP: 1 / 60,          // one tick
+  VELOCITY_ITERATIONS: 8,
+  POSITION_ITERATIONS: 3,
+  BALL_RADIUS: 0.19,
+  BALL_DENSITY: 1,
+  BALL_FRICTION: 0.5,
+  BALL_RESTITUTION: 0.2,
+  LINEAR_DAMPING: 0.5,
+  ANGULAR_DAMPING: 0.5,
+  WALL_FRICTION: 0.5,
+  WALL_RESTITUTION: 0.2,
+  MAX_SPEED: 2.5,        // a key only adds speed on its axis while |v| on that axis is below this
+  ACCEL: 0.025,          // m/s added per tick per held key
+};
+const PH = PHYSICS;
+
+// collision filters from the official client: red 32, blue 64, everything 126.
+// ballCollisions false = TagPro's "noPlayerCollisions" ghost mode
+function ballFilter(team, ballCollisions) {
+  return { categoryBits: team === 2 ? 64 : 32, maskBits: ballCollisions === false ? 126 & ~96 : 126 };
+}
+
+const KEYS = ['up', 'down', 'left', 'right'];
+
+// keys: { up, down, left, right } | 'UL' | 'up left' | ['up', 'left'] | '' or null (nothing)
+function parseKeys(k) {
+  const out = { up: false, down: false, left: false, right: false };
+  if (!k) return out;
+  if (Array.isArray(k)) { for (const n of k) out[keyName(n)] = true; return out; }
+  if (typeof k === 'object') { for (const n of KEYS) out[n] = !!k[n]; return out; }
+  const s = String(k).trim();
+  const parts = /[\s,+]/.test(s) || /^(up|down|left|right)$/i.test(s) ? s.split(/[\s,+]+/) : Array.from(s);
+  for (const n of parts) if (n) out[keyName(n)] = true;
+  return out;
+}
+function keyName(n) {
+  const k = String(n).toLowerCase();
+  const m = { u: 'up', d: 'down', l: 'left', r: 'right' }[k] || k;
+  if (!KEYS.includes(m)) throw new Error(`unknown key '${n}' (use up/down/left/right or U/D/L/R)`);
+  return m;
+}
+function keysToString(k) { return (k.up ? 'U' : '') + (k.down ? 'D' : '') + (k.left ? 'L' : '') + (k.right ? 'R' : ''); }
+
+class Playground {
+  // opts: { map, ballCollisions: true, seed: 1 (for random spawns) }
+  constructor(opts = {}) {
+    if (!opts.map) throw new Error('Playground needs a map');
+    this.map = opts.map;
+    this.ballCollisions = opts.ballCollisions !== false;
+    this.rng = makeRng(opts.seed ?? 1);
+    this.tick = 0;
+    this.balls = [];
+    this.byId = {};
+    this.nextId = 1;
+    this.spawnable = spawnTiles(this.map);
+    this.world = new Box2D.Dynamics.b2World(new V(0, 0), true);
+    const fd = new Box2D.Dynamics.b2FixtureDef();
+    const bd = new Box2D.Dynamics.b2BodyDef();
+    fd.density = 1; fd.friction = PH.WALL_FRICTION; fd.restitution = PH.WALL_RESTITUTION;
+    fd.filter.categoryBits = -1;
+    bd.type = Box2D.Dynamics.b2Body.b2_staticBody;
+    for (let x = 0; x < this.map.width; x++) for (let y = 0; y < this.map.height; y++) {
+      const t = this.map.tiles[x][y];
+      if (Math.floor(t) !== 1) continue;
+      fd.shape = new Box2D.Collision.Shapes.b2PolygonShape();
+      if (t === 1.1) fd.shape.SetAsArray([new V(-0.2, 0.2), new V(-0.2, -0.2), new V(0.2, 0.2)]);
+      else if (t === 1.2) fd.shape.SetAsArray([new V(-0.2, -0.2), new V(0.2, -0.2), new V(-0.2, 0.2)]);
+      else if (t === 1.3) fd.shape.SetAsArray([new V(0.2, -0.2), new V(0.2, 0.2), new V(-0.2, -0.2)]);
+      else if (t === 1.4) fd.shape.SetAsArray([new V(0.2, 0.2), new V(-0.2, 0.2), new V(0.2, -0.2)]);
+      else fd.shape.SetAsBox(0.2, 0.2);
+      bd.position.Set(PH.TILE * x, PH.TILE * y);
+      this.world.CreateBody(bd).CreateFixture(fd);
+    }
+  }
+
+  // spec: {
+  //   id: 'chaser'          default 'ball1', 'ball2', ...
+  //   team: 1 | 2           red / blue (default alternates)
+  //   tile: [tx, ty]        spawn on a tile's centre, or
+  //   pos: [x, y]           exact position in metres, or neither for a random open tile
+  //   minDistance: tiles    random spawn: at least this far from the other balls (if it fits)
+  //   vel: [vx, vy]         starting velocity, m/s
+  //   keys: 'UR'            keys held from the start
+  // }
+  addBall(spec = {}) {
+    let id = spec.id;
+    while (!id || (!spec.id && this.byId[id])) id = 'ball' + this.nextId++;
+    if (this.byId[id]) throw new Error(`duplicate ball id '${id}'`);
+    const team = spec.team || (this.balls.length % 2 ? 2 : 1);
+    const fd = new Box2D.Dynamics.b2FixtureDef();
+    const bd = new Box2D.Dynamics.b2BodyDef();
+    fd.density = PH.BALL_DENSITY; fd.friction = PH.BALL_FRICTION; fd.restitution = PH.BALL_RESTITUTION;
+    fd.shape = new Box2D.Collision.Shapes.b2CircleShape(PH.BALL_RADIUS);
+    const f = ballFilter(team, this.ballCollisions);
+    fd.filter.categoryBits = f.categoryBits; fd.filter.maskBits = f.maskBits;
+    bd.type = Box2D.Dynamics.b2Body.b2_dynamicBody;
+    bd.linearDamping = PH.LINEAR_DAMPING; bd.angularDamping = PH.ANGULAR_DAMPING;
+    const body = this.world.CreateBody(bd);
+    body.CreateFixture(fd);
+    body.SetPosition(new V(-100, -100));
+    body.SetActive(false);
+    const ball = { id, team, body, keys: parseKeys(spec.keys) };
+    body.ball = ball;
+    this.balls.push(ball);
+    this.byId[id] = ball;
+    let at;
+    if (spec.pos) at = { x: spec.pos[0], y: spec.pos[1] };
+    else if (spec.tile) at = { x: spec.tile[0] * PH.TILE, y: spec.tile[1] * PH.TILE };
+    else at = this.randomSpot(ball, spec.minDistance || 0);
+    const vel = spec.vel || [0, 0];
+    this.place(id, at.x, at.y, vel[0], vel[1]);
+    return ball;
+  }
+
+  removeBall(id) {
+    const b = this.ball(id);
+    this.world.DestroyBody(b.body);
+    this.balls.splice(this.balls.indexOf(b), 1);
+    delete this.byId[b.id];
+  }
+
+  // a random open tile centre clear of the other balls, minDistance tiles from them if possible
+  randomSpot(self, minDistance = 0) {
+    if (!this.spawnable.length) throw new Error('map has no open floor to spawn on');
+    const others = this.balls.filter((b) => b !== self && b.body.IsActive()).map((b) => b.body.GetPosition());
+    const gap = (x, y) => Math.min(Infinity, ...others.map((o) => Math.hypot(o.x - x, o.y - y)));
+    const free = PH.BALL_RADIUS * 2 + 0.01;
+    const want = Math.max(free, minDistance * PH.TILE);
+    for (let i = 0; i < 1000; i++) {
+      const t = this.spawnable[Math.floor(this.rng() * this.spawnable.length)];
+      const x = t.x * PH.TILE, y = t.y * PH.TILE;
+      if (gap(x, y) >= want) return { x, y };
+    }
+    let best = null, bestGap = free;
+    for (const t of this.spawnable) {
+      const x = t.x * PH.TILE, y = t.y * PH.TILE, d = gap(x, y);
+      if (d >= bestGap) { best = { x, y }; bestGap = d; }
+    }
+    if (!best) throw new Error('no free tile left for a ball');
+    return best;
+  }
+
+  // put a ball somewhere, like a TagPro respawn: stopped unless a velocity is given
+  place(id, x, y, vx = 0, vy = 0) {
+    const b = this.ball(id).body;
+    b.SetActive(true);
+    b.SetPosition(new V(x, y));
+    b.SetLinearVelocity(new V(0, 0));
+    b.SetAngularVelocity(0);
+    if (vx || vy) b.SetLinearVelocity(new V(vx, vy));
+  }
+
+  ball(id) {
+    const b = typeof id === 'object' ? id : this.byId[id];
+    if (!b) throw new Error(`no ball '${id}'`);
+    return b;
+  }
+
+  setKeys(id, keys) { this.ball(id).keys = parseKeys(keys); }
+
+  // one 60 Hz tick. keys (optional): { ballId: keys } set first; other balls keep what they hold
+  step(keys) {
+    if (keys) for (const id in keys) this.setKeys(id, keys[id]);
+    this.tick++;
+    for (const b of this.balls) b.body.SetAwake(true);
+    this.world.Step(PH.STEP, PH.VELOCITY_ITERATIONS, PH.POSITION_ITERATIONS);
+    for (const b of this.balls) {
+      b.body.SetAwake(true);
+      const v = b.body.GetLinearVelocity();
+      const k = b.keys;
+      if (k.left && v.x > -PH.MAX_SPEED) v.x -= PH.ACCEL;
+      if (k.right && v.x < PH.MAX_SPEED) v.x += PH.ACCEL;
+      if (k.up && v.y > -PH.MAX_SPEED) v.y -= PH.ACCEL;
+      if (k.down && v.y < PH.MAX_SPEED) v.y += PH.ACCEL;
+      b.body.SetLinearVelocity(v);
+    }
+    return this;
+  }
+
+  // { id, team, x, y, vx, vy, angle, spin, keys }
+  ballState(id) {
+    const b = this.ball(id), body = b.body, p = body.GetPosition(), v = body.GetLinearVelocity();
+    return { id: b.id, team: b.team, x: p.x, y: p.y, vx: v.x, vy: v.y, angle: body.GetAngle(), spin: body.GetAngularVelocity(), keys: keysToString(b.keys) };
+  }
+
+  // pairs of balls touching right now: [[idA, idB], ...]
+  contacts() {
+    const out = [];
+    if (this.ballCollisions) {
+      for (let c = this.world.GetContactList(); c; c = c.GetNext()) {
+        if (!c.IsTouching()) continue;
+        const a = c.GetFixtureA().GetBody().ball, b = c.GetFixtureB().GetBody().ball;
+        if (a && b) out.push([a.id, b.id]);
+      }
+      return out;
+    }
+    for (let i = 0; i < this.balls.length; i++) for (let j = i + 1; j < this.balls.length; j++) {
+      const a = this.balls[i].body.GetPosition(), b = this.balls[j].body.GetPosition();
+      if (Math.hypot(a.x - b.x, a.y - b.y) <= PH.BALL_RADIUS * 2) out.push([this.balls[i].id, this.balls[j].id]);
+    }
+    return out;
+  }
+
+  touching(a, b) {
+    a = this.ball(a).id; b = this.ball(b).id;
+    return this.contacts().some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+  }
+
+  // { tick, balls: { id: ballState }, contacts }
+  state() {
+    const balls = {};
+    for (const b of this.balls) balls[b.id] = this.ballState(b);
+    return { tick: this.tick, balls, contacts: this.contacts() };
+  }
+}
+
+module.exports = { Playground, PHYSICS, parseKeys, keysToString };
+})();
+
+;load('world');</script>
+<script>window.module = { exports: {} };
+// chase-playground: TagPro ball movement with the exact default physics, for writing bots.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { Playground, PHYSICS, parseKeys, keysToString } = require('./src/world');
+const { fromAscii, toAscii, fromGrid } = require('./src/maps');
+const { generateMap } = require('./src/mapgen');
+const { addIslands } = require('./src/islands');
+
+module.exports = { Playground, PHYSICS, parseKeys, keysToString, generateMap, addIslands, fromAscii, toAscii, fromGrid };
+})();
+
+;load('index');</script>
+<script>window.module = { exports: {} };
+// nav.js - the map as a grid the bots can plan on.
+//
+// Tile i = x + y * width. A tile is walkable when it is open floor; 45 degree tiles count as
+// walls here (a ball can roll over half of one, but planning around them is safer). Steps go to
+// all 8 neighbours, a diagonal only when both tiles beside it are open, and every step costs the
+// same: TagPro accelerates each axis on its own, so going diagonally covers a tile on both axes
+// in the time a straight move covers one.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { isWall, spawnTiles } = require('../src/maps');
+const TILE = 0.4;
+
+class Heap { // min-heap of tile indexes keyed by a Float64Array
+  constructor(key) { this.key = key; this.a = []; }
+  get size() { return this.a.length; }
+  push(i) {
+    const a = this.a, k = this.key; a.push(i);
+    let c = a.length - 1;
+    while (c > 0) { const p = (c - 1) >> 1; if (k[a[p]] <= k[a[c]]) break; [a[p], a[c]] = [a[c], a[p]]; c = p; }
+  }
+  pop() {
+    const a = this.a, k = this.key, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let p = 0;
+      for (;;) {
+        const l = 2 * p + 1, r = l + 1;
+        let m = p;
+        if (l < a.length && k[a[l]] < k[a[m]]) m = l;
+        if (r < a.length && k[a[r]] < k[a[m]]) m = r;
+        if (m === p) break;
+        [a[p], a[m]] = [a[m], a[p]]; p = m;
+      }
+    }
+    return top;
+  }
+}
+
+class Nav {
+  constructor(map) {
+    const W = this.W = map.width, H = this.H = map.height, N = this.N = W * H;
+    this.map = map;
+    // only the largest connected area: that is where balls spawn, so everything else is unreachable
+    this.open = new Uint8Array(N);
+    this.tiles = [];
+    for (const t of spawnTiles(map)) { const i = t.x + t.y * W; this.open[i] = 1; this.tiles.push(i); }
+    this.solid = new Uint8Array(N);   // for line of sight: anything a ball cannot pass through
+    for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
+      const t = map.tiles[x][y];
+      this.solid[x + y * W] = t === 0 || isWall(t) ? 1 : 0;
+    }
+    // neighbours as flat lists: nbr[i] = [j, ...]
+    this.nbr = new Array(N);
+    for (const i of this.tiles) {
+      const x = i % W, y = (i / W) | 0, out = [];
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (!this.isOpen(nx, ny)) continue;
+        if (dx && dy && !(this.isOpen(x + dx, y) && this.isOpen(x, y + dy))) continue;
+        out.push(nx + ny * W);
+      }
+      this.nbr[i] = out;
+    }
+    this.room = this.clearance();
+    this.flows = new Map();
+    this.sight = new Map();
+    this.islands = this.findIslands();
+  }
+
+  // wall blobs with floor all the way round them, which a ball can loop around:
+  // [{ x, y (centre, metres), r (metres to its farthest tile), tiles: [i] }]
+  findIslands() {
+    const W = this.W, H = this.H, seen = new Uint8Array(this.N), out = [];
+    for (let s = 0; s < this.N; s++) {
+      if (!this.solid[s] || seen[s]) continue;
+      const comp = [s], stack = [s];
+      let edge = false;
+      seen[s] = 1;
+      while (stack.length) {
+        const i = stack.pop(), x = i % W, y = (i / W) | 0;
+        if (x === 0 || y === 0 || x === W - 1 || y === H - 1 || this.map.tiles[x][y] === 0) edge = true;
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = nx + ny * W;
+          if (this.solid[j] && !seen[j]) { seen[j] = 1; comp.push(j); stack.push(j); }
+        }
+      }
+      if (edge) continue;
+      let cx = 0, cy = 0;
+      for (const i of comp) { cx += (i % W) * TILE; cy += ((i / W) | 0) * TILE; }
+      cx /= comp.length; cy /= comp.length;
+      let r = 0;
+      for (const i of comp) r = Math.max(r, Math.hypot((i % W) * TILE - cx, ((i / W) | 0) * TILE - cy));
+      out.push({ x: cx, y: cy, r: r + TILE / 2, tiles: comp });
+    }
+    return out;
+  }
+
+  isOpen(x, y) { return x >= 0 && y >= 0 && x < this.W && y < this.H && this.open[x + y * this.W] === 1; }
+  xy(i) { return [i % this.W, (i / this.W) | 0]; }
+  centre(i) { return { x: (i % this.W) * TILE, y: ((i / this.W) | 0) * TILE }; }
+
+  // the open tile under a point in metres (or the nearest open one, for a ball rolling over a 45)
+  tileAt(x, y) {
+    const tx = Math.round(x / TILE), ty = Math.round(y / TILE);
+    if (this.isOpen(tx, ty)) return tx + ty * this.W;
+    let best = -1, bd = Infinity;
+    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) {
+      if (!this.isOpen(tx + dx, ty + dy)) continue;
+      const d = Math.hypot((tx + dx) * TILE - x, (ty + dy) * TILE - y);
+      if (d < bd) { bd = d; best = tx + dx + (ty + dy) * this.W; }
+    }
+    return best;
+  }
+
+  solidAt(x, y) {
+    const tx = Math.round(x / TILE), ty = Math.round(y / TILE);
+    if (tx < 0 || ty < 0 || tx >= this.W || ty >= this.H) return true;
+    return this.solid[tx + ty * this.W] === 1;
+  }
+
+  // can a ball of radius r roll in a straight line from a to b without touching a wall tile?
+  clear(ax, ay, bx, by, r = 0.17) {
+    const L = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(L / 0.1));
+    for (let s = 0; s <= n; s++) {
+      const x = ax + (bx - ax) * s / n, y = ay + (by - ay) * s / n;
+      if (this.solidAt(x, y)) return false;
+      if (r && (this.solidAt(x - r, y - r) || this.solidAt(x + r, y - r) || this.solidAt(x - r, y + r) || this.solidAt(x + r, y + r))) return false;
+    }
+    return true;
+  }
+
+  // open tiles within `radius` tiles that a thin line from tile i's centre reaches. Cached per tile.
+  visible(i, radius) {
+    const key = i * 64 + radius;
+    let v = this.sight.get(key);
+    if (v) return v;
+    const out = [], [mx, my] = this.xy(i), c = this.centre(i);
+    for (let x = mx - radius; x <= mx + radius; x++) for (let y = my - radius; y <= my + radius; y++) {
+      if (!this.isOpen(x, y)) continue;
+      if (x === mx && y === my) { out.push(i); continue; }
+      if (this.clear(c.x, c.y, x * TILE, y * TILE, 0.08)) out.push(x + y * this.W);
+    }
+    v = Int32Array.from(out);
+    this.sight.set(key, v);
+    return v;
+  }
+
+  // steps from every tile to the nearest wall (8 directions): how much room there is around it
+  clearance() {
+    const d = new Int16Array(this.N).fill(-1);
+    let q = [];
+    for (let i = 0; i < this.N; i++) if (!this.open[i]) { d[i] = 0; q.push(i); }
+    while (q.length) {
+      const next = [];
+      for (const i of q) {
+        const x = i % this.W, y = (i / this.W) | 0;
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= this.W || ny >= this.H) continue;
+          const j = nx + ny * this.W;
+          if (d[j] === -1) { d[j] = d[i] + 1; next.push(j); }
+        }
+      }
+      q = next;
+    }
+    return d;
+  }
+
+  // steps from every tile to `goal` (Int16, -1 = unreachable). Cached, since targets repeat.
+  flowTo(goal) {
+    let f = this.flows.get(goal);
+    if (f) { this.flows.delete(goal); this.flows.set(goal, f); return f; }
+    f = new Int16Array(this.N).fill(-1);
+    f[goal] = 0;
+    let q = [goal];
+    while (q.length) {
+      const next = [];
+      for (const i of q) for (const j of this.nbr[i]) if (f[j] === -1) { f[j] = f[i] + 1; next.push(j); }
+      q = next;
+    }
+    this.flows.set(goal, f);
+    if (this.flows.size > 256) this.flows.delete(this.flows.keys().next().value);
+    return f;
+  }
+
+  // like flowTo but each tile can cost extra to step onto (cost(j) >= 0). Not cached.
+  costTo(goal, cost) {
+    const f = new Float64Array(this.N).fill(Infinity), h = new Heap(f);
+    f[goal] = 0; h.push(goal);
+    while (h.size) {
+      const i = h.pop();
+      for (const j of this.nbr[i]) {
+        const c = f[i] + 1 + cost(i);
+        if (c < f[j]) { f[j] = c; h.push(j); }
+      }
+    }
+    return f;
+  }
+
+  // the tiles from `from` down a flow field to its goal
+  path(from, flow, max = 400) {
+    const out = [from];
+    let i = from;
+    for (let n = 0; n < max && flow[i] > 0; n++) {
+      let best = -1, bv = flow[i];
+      for (const j of this.nbr[i]) if (flow[j] >= 0 && flow[j] < bv) { bv = flow[j]; best = j; }
+      if (best < 0) break;
+      out.push(best); i = best;
+    }
+    return out;
+  }
+}
+
+module.exports = { Nav, Heap, TILE };
+})();
+
+;load('nav');</script>
+<script>window.module = { exports: {} };
+// motion.js - how long a TagPro ball takes to get somewhere, momentum included.
+//
+// Each axis of a ball is a damped double integrator, run in the same order as the engine:
+//   v *= 1 - 0.5/60   (Box2D linear damping, inside world.Step)
+//   x += v / 60
+//   v += 0.025        (a held key, after the step, only while v < 2.5)
+// so a ball from rest needs about 100 ticks to reach 2.5 m/s, and one moving the wrong way first
+// spends time turning round. This is the "isochrone" idea from the damped double integrator
+// pursuit papers (Li, Wang & Xie 2024; arXiv 2505.11951): instead of distance, everything is
+// measured in the ticks it takes to arrive, given where the ball is going right now.
+//
+// coverTicks(d, v0)   ticks to move d metres along an axis holding the key, starting at speed v0
+//                     (negative v0 = moving away)
+// reachTicks(s, x, y, cap)   ticks for ball state s to get within cap metres of (x, y), open floor
+// timeField(nav, s, cap)     ticks for ball s to reach every tile, around walls
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { Heap, TILE } = require('./nav');
+
+const DAMP = 1 - 0.5 / 60, ACCEL = 0.025, VMAX = 2.5, DT = 1 / 60;
+const TICKS_PER_TILE = TILE / VMAX / DT;    // 9.6 ticks to cross a tile at full speed
+const V0_MIN = -3, V0_STEP = 0.05, ROWS = 121, N = 900;
+
+// pos[row][t]: distance travelled after t ticks holding the key, from speed V0_MIN + row * V0_STEP
+const pos = [], lowest = [];
+for (let r = 0; r < ROWS; r++) {
+  const p = new Float64Array(N + 1);
+  let v = V0_MIN + r * V0_STEP, x = 0, lo = 0;
+  for (let t = 1; t <= N; t++) {
+    v *= DAMP; x += v * DT;
+    if (v < VMAX) v += ACCEL;
+    p[t] = x;
+    if (x < p[lo]) lo = t;
+  }
+  pos.push(p); lowest.push(lo);
+}
+
+function coverTicks(d, v0) {
+  if (d <= 0) return 0;
+  const r = Math.max(0, Math.min(ROWS - 1, Math.round((v0 - V0_MIN) / V0_STEP)));
+  const p = pos[r];
+  if (p[N] < d) return N + (d - p[N]) / (VMAX * DT);
+  let lo = lowest[r], hi = N;   // position only rises after its lowest point
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (p[m] >= d) hi = m; else lo = m; }
+  // interpolate inside the tick, so small changes in distance give small changes in time
+  return lo + (d - p[lo]) / Math.max(1e-6, p[hi] - p[lo]);
+}
+
+// both axes are pushed at once, so arriving takes as long as the slower axis
+function reachTicks(s, x, y, cap = 0) {
+  let dx = x - s.x, dy = y - s.y;
+  const L = Math.hypot(dx, dy);
+  if (L <= cap) return 0;
+  if (cap) { const k = (L - cap) / L; dx *= k; dy *= k; }
+  const tx = coverTicks(Math.abs(dx), dx >= 0 ? s.vx : -s.vx);
+  const ty = coverTicks(Math.abs(dy), dy >= 0 ? s.vy : -s.vy);
+  return Math.max(tx, ty);
+}
+
+// Ticks for ball s to reach every tile. Tiles in a straight, clear line within `seed` tiles use
+// reachTicks (that is where momentum matters; "clear" is seen from the ball's tile centre); from those, the time spreads around walls at full
+// speed, one tile per 9.6 ticks. cap: the reach of a tag (two ball radii) for a chaser.
+function timeField(nav, s, cap = 0, seed = 10) {
+  const T = new Float64Array(nav.N).fill(Infinity), h = new Heap(T);
+  const me = nav.tileAt(s.x, s.y);
+  if (me < 0) return T;
+  for (const i of nav.visible(me, seed)) {
+    const c = nav.centre(i);
+    T[i] = reachTicks(s, c.x, c.y, cap);
+    h.push(i);
+  }
+  const step = TICKS_PER_TILE;
+  while (h.size) {
+    const i = h.pop();
+    for (const j of nav.nbr[i]) if (T[i] + step < T[j]) { T[j] = T[i] + step; h.push(j); }
+  }
+  return T;
+}
+
+module.exports = { coverTicks, reachTicks, timeField, TICKS_PER_TILE, VMAX, ACCEL, DAMP, DT };
+})();
+
+;load('motion');</script>
+<script>window.module = { exports: {} };
+// steer.js - turn "get to this point" into the four arrow keys.
+//
+// With pathfind off a ball just holds the keys pointing at its target. With it on, the ball
+// follows a path around the walls and aims at the farthest point on that path it can roll to in
+// a straight line. With brake on it also handles momentum: on each axis it works out the
+// speed it wants and pushes toward that speed, which means letting go or pressing the opposite
+// key early enough to make a turn instead of bouncing off the wall at the corner.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { VMAX } = require('./motion');
+
+const BRAKE = 2.0;   // m/s^2 a ball can slow down by (1.5 from the key, the rest from damping)
+
+// s: ball state. goal: { x, y }. opts: { pathfind, brake, flow (a field to follow instead of a
+// plain path to the goal's tile), stop (come to rest at the goal) }
+// returns { keys: 'UL', aim: { x, y } } (aim is the point it steered at, for drawing)
+function steer(nav, s, goal, opts = {}) {
+  let aim = goal, after = null;
+  if (opts.pathfind) {
+    const me = nav.tileAt(s.x, s.y), end = nav.tileAt(goal.x, goal.y);
+    if (me >= 0 && end >= 0 && me !== end) {
+      const flow = opts.flow || nav.flowTo(end);
+      const path = nav.path(me, flow, 40);
+      // the farthest tile along the path in a clear straight line
+      let k = 0;
+      for (let j = 1; j < path.length; j++) {
+        const c = nav.centre(path[j]);
+        if (!nav.clear(s.x, s.y, c.x, c.y)) break;
+        k = j;
+      }
+      const last = path[path.length - 1] === end && k === path.length - 1;
+      if (last && nav.clear(s.x, s.y, goal.x, goal.y)) aim = goal;
+      else if (k > 0) {
+        aim = nav.centre(path[k]);
+        const n = path[Math.min(path.length - 1, k + 4)];
+        after = n === path[k] ? null : nav.centre(n);
+      } else aim = nav.centre(path[Math.min(1, path.length - 1)]);
+    }
+  }
+  return { keys: opts.brake ? smoothKeys(s, aim, after, opts.stop) : plainKeys(s, aim), aim };
+}
+
+function plainKeys(s, aim) {
+  let k = '';
+  if (aim.y < s.y - 0.02) k += 'U';
+  if (aim.y > s.y + 0.02) k += 'D';
+  if (aim.x < s.x - 0.02) k += 'L';
+  if (aim.x > s.x + 0.02) k += 'R';
+  return k;
+}
+
+// per axis: the speed we want, then the key that moves us toward it
+function smoothKeys(s, aim, after, stop) {
+  const axis = (d, v, turn) => {
+    let want = Math.sign(d) * VMAX;
+    // slow down in time when the path turns back (or stops) on this axis after the aim point
+    if (turn) want = Math.sign(d) * Math.min(VMAX, Math.sqrt(2 * BRAKE * Math.abs(d)));
+    if (Math.abs(d) < 0.03 && turn) want = 0;
+    if (Math.abs(want) >= VMAX - 1e-9) return Math.sign(want);
+    if (v < want - 0.08) return 1;
+    if (v > want + 0.08) return -1;
+    return 0;
+  };
+  const dx = aim.x - s.x, dy = aim.y - s.y;
+  // an axis turns when the next leg goes the other way on it, or barely moves on it
+  const turns = (d, n) => stop || (after && (Math.sign(n) !== Math.sign(d) || Math.abs(n) < 0.15));
+  const ax = axis(dx, s.vx, turns(dx, after ? after.x - aim.x : 0));
+  const ay = axis(dy, s.vy, turns(dy, after ? after.y - aim.y : 0));
+  return (ay < 0 ? 'U' : ay > 0 ? 'D' : '') + (ax < 0 ? 'L' : ax > 0 ? 'R' : '');
+}
+
+module.exports = { steer, plainKeys };
+})();
+
+;load('steer');</script>
+<script>window.module = { exports: {} };
+// speed.js - how a chaser closes in without running past the runner.
+//
+// Up close a chaser does not aim at a point (it would arrive at full speed and overshoot). It
+// matches the runner's velocity plus a capped closing speed toward a spot just off the runner:
+//   spot      = runner + runner velocity * lead + offset (standoff tiles toward where it wants to go)
+//   want      = runner velocity + gain * (spot - me), the extra part capped at maxClose m/s
+//   each axis: press toward `want`, let go inside the deadband
+// So it slows down when it is about to pass the runner, and keeps up when the runner runs.
+// The numbers between the TRAINED markers are written by examples/train-speed.js.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { VMAX } = require('./motion');
+
+const SPEED = {
+  // TRAINED-BEGIN
+  standoff: 0.62,  // tiles off the runner, on its escape side
+  lead: 0.062,  // seconds of the runner's velocity to aim ahead by
+  gain: 2.958,  // m/s of closing speed per metre of distance from the spot
+  maxClose: 0.959,  // m/s faster than the runner, at most, while closing in
+  range: 80.345,  // Contain takes over within this many ticks of the runner
+  commitBelow: -5,   // also go for the tag when the runner's best dodge scores under this
+  deadband: 0.102,  // m/s: close enough to the wanted speed, let go
+  // TRAINED-END
+};
+
+// keys for chaser state s to hold `off` (metres from the runner r, before the lead)
+function matchKeys(s, r, off) {
+  const px = r.x + r.vx * SPEED.lead + off.x, py = r.y + r.vy * SPEED.lead + off.y;
+  let cx = SPEED.gain * (px - s.x), cy = SPEED.gain * (py - s.y);
+  const L = Math.hypot(cx, cy);
+  if (L > SPEED.maxClose) { cx *= SPEED.maxClose / L; cy *= SPEED.maxClose / L; }
+  const wx = Math.max(-VMAX, Math.min(VMAX, r.vx + cx)), wy = Math.max(-VMAX, Math.min(VMAX, r.vy + cy));
+  const axis = (v, w) => (v < w - SPEED.deadband ? 1 : v > w + SPEED.deadband ? -1 : 0);
+  const ax = axis(s.vx, wx), ay = axis(s.vy, wy);
+  return { keys: (ay < 0 ? 'U' : ay > 0 ? 'D' : '') + (ax < 0 ? 'L' : ax > 0 ? 'R' : ''), spot: { x: px, y: py } };
+}
+
+module.exports = { SPEED, matchKeys };
+})();
+
+;load('speed');</script>
+<script>window.module = { exports: {} };
+// behaviors.js - what the chaser and the runner do, as triggers and algorithms.
+//
+// Each behaviour has a trigger, when(scene), that looks at the game state, and an algorithm,
+// act(scene), that says where to go (or which keys to hold). Every time a bot thinks, it runs
+// the behaviour with the highest priority whose trigger fires. Any behaviour can be switched off
+// on its own (Match option runnerOff / chaserOff) to see what it is worth; the lowest one of each
+// side (flee, beeline) is the fallback and is always on.
+//
+// The scene (built by match.js) has, among others:
+//   tR[i]        ticks for the runner to reach tile i (momentum and walls included)
+//   tC[k][i]     the same for chaser k, minus the reach of a tag
+//   margin[i]    min over chasers of tC[k][i] - tR[i]: positive tiles are the runner's
+//                "dominance region", the tiles it gets to first (the Voronoi idea from the papers)
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { TILE } = require('./nav');
+const { DAMP, ACCEL, VMAX, DT } = require('./motion');
+const { SPEED } = require('./speed');
+
+// ---------------------------------------------------------------- shared algorithms
+
+// the runner's target weights (escapeTarget), here so experiments can change them
+const TUNE = {
+  near: 5, far: 12,     // look for targets this many steps away
+  cap: 45,              // margins above this many ticks count the same
+  unsafe: 10,           // targets with less margin than this are marked down by 40
+  room: 4, box: 0.5,    // per step of room to the nearest wall (up to 5); per own tile in the 7x7 box
+  momentum: 12,         // for heading the way it already moves, at full speed
+  keep: 8,              // keep the old target unless a new one scores this much better
+  jukeTicks: 20, jukeTiles: 2.5,   // Juke fires when a chaser is this close
+};
+
+// where the runner most wants to head: a tile 5 to 12 steps away that it reaches first by a safe
+// margin, with room around it (not a dead end), in the direction it is already moving, and toward
+// its goal if it has one. The target is never reached: it is re-picked as the runner moves, so
+// the runner keeps its speed up instead of parking in the "safest" far corner.
+function escapeTarget(sc, margin, opts = {}) {
+  const { nav, runner } = sc;
+  const box = regionBoxes(nav, margin), near = nav.flowTo(sc.runnerTile);
+  const toGoal = opts.goal && sc.goal >= 0 ? nav.flowTo(sc.goal) : null;
+  const speed = Math.hypot(runner.vx, runner.vy);
+  const score = (i) => {
+    let s = Math.min(margin[i], TUNE.cap) + TUNE.room * Math.min(nav.room[i], 5) + TUNE.box * box[i];
+    if (margin[i] < TUNE.unsafe) s -= 40;
+    if (speed > 0.3) {
+      const c = nav.centre(i), dx = c.x - runner.x, dy = c.y - runner.y, L = Math.hypot(dx, dy) || 1;
+      s += TUNE.momentum * Math.min(1, speed / 2.5) * (dx * runner.vx + dy * runner.vy) / (L * speed);
+    }
+    if (toGoal && toGoal[i] >= 0) s -= 1.5 * toGoal[i];
+    return s;
+  };
+  let best = -1, bs = -Infinity;
+  for (const i of nav.tiles) {
+    if (near[i] < TUNE.near || near[i] > TUNE.far) continue;
+    const s = score(i);
+    if (s > bs) { bs = s; best = i; }
+  }
+  if (best < 0) best = sc.runnerTile, bs = score(best);
+  // keep the old target unless the new one is clearly better: stops it flip-flopping every think
+  const prev = opts.prev;
+  if (prev >= 0 && near[prev] >= TUNE.near - 1 && near[prev] <= TUNE.far + 1 && score(prev) >= bs - TUNE.keep) return { tile: prev, score: score(prev) };
+  return { tile: best, score: bs };
+}
+
+// how many of the runner's tiles are in the 7x7 box around each tile (a summed-area table)
+function regionBoxes(nav, margin) {
+  const W = nav.W, H = nav.H, S = new Int32Array((W + 1) * (H + 1)), out = new Float64Array(nav.N);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = x + y * W, v = nav.open[i] && margin[i] > 0 ? 1 : 0;
+    S[(x + 1) + (y + 1) * (W + 1)] = v + S[x + (y + 1) * (W + 1)] + S[(x + 1) + y * (W + 1)] - S[x + y * (W + 1)];
+  }
+  const at = (x, y) => S[Math.max(0, Math.min(W, x)) + Math.max(0, Math.min(H, y)) * (W + 1)];
+  for (const i of nav.tiles) {
+    const x = i % W, y = (i / W) | 0;
+    out[i] = at(x + 4, y + 4) - at(x - 3, y + 4) - at(x + 4, y - 3) + at(x - 3, y - 3);
+  }
+  return out;
+}
+
+// a path that avoids tiles a chaser gets to first or nearly first
+function safeFlow(sc, goal) {
+  return sc.nav.costTo(goal, (i) => (sc.margin[i] < 20 ? (20 - Math.max(sc.margin[i], -40)) / 8 : 0));
+}
+
+// where a ball goes if it keeps pushing the way it is already moving, with crude wall stops
+function predict(nav, s, ticks) {
+  let x = s.x, y = s.y, vx = s.vx, vy = s.vy;
+  const px = Math.abs(vx) > 0.3 ? Math.sign(vx) : 0, py = Math.abs(vy) > 0.3 ? Math.sign(vy) : 0;
+  const out = [];
+  for (let t = 1; t <= ticks; t++) {
+    vx *= DAMP; vy *= DAMP;
+    if (nav.solidAt(x + vx * DT + Math.sign(vx) * 0.19, y)) vx = 0; else x += vx * DT;
+    if (nav.solidAt(x, y + vy * DT + Math.sign(vy) * 0.19)) vy = 0; else y += vy * DT;
+    if (px && px * vx < VMAX) vx += px * ACCEL;
+    if (py && py * vy < VMAX) vy += py * ACCEL;
+    out.push({ x, y });
+  }
+  return out;
+}
+
+// the first point on the runner's predicted line that chaser k gets to in time
+function intercept(sc, k) {
+  const line = predict(sc.nav, sc.runner, 120), T = sc.tC[k];
+  for (let t = 2; t <= line.length; t += 2) {
+    const p = line[t - 1], i = sc.nav.tileAt(p.x, p.y);
+    if (i >= 0 && T[i] <= t) return p;
+  }
+  return line[line.length - 1];
+}
+
+// the first tile on the runner's way to `escape` that chaser k gets to before it does
+function cutPath(sc, k, escape) {
+  const { nav } = sc, T = sc.tC[k];
+  const path = nav.path(sc.runnerTile, nav.flowTo(escape), 200);
+  for (let j = 1; j < path.length; j++) if (T[path[j]] <= sc.tR[path[j]] + 3) return nav.centre(path[j]);
+  return nav.centre(escape);
+}
+
+const angleAround = (o, p) => Math.atan2(p.y - o.y, p.x - o.x);
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+// the island the runner is circling, if there is one close by
+function nearIsland(sc, within = 4 * TILE) {
+  let best = null, bd = Infinity;
+  for (const isl of sc.nav.islands) {
+    const d = Math.hypot(sc.runner.x - isl.x, sc.runner.y - isl.y) - isl.r;
+    if (d < within && d < bd) { bd = d; best = isl; }
+  }
+  return best;
+}
+
+// an open tile on a ring round the island at angle a
+function ringPoint(sc, isl, a, gap = 1.5 * TILE) {
+  const R = isl.r + gap, i = sc.nav.tileAt(isl.x + Math.cos(a) * R, isl.y + Math.sin(a) * R);
+  return i >= 0 ? sc.nav.centre(i) : null;
+}
+
+// A look ahead: hold one key combo for `first` ticks, then another for `then` ticks (81 plans),
+// while the chasers come at where you are heading (they aim ahead of you, like Lead). Same
+// per-axis physics as the engine, with walls as a 0.2 restitution bounce (Box2D's ball-on-wall
+// value). The score is survival first, then the distance kept, the margin, the room and the speed
+// you end with: their momentum means they cannot turn as fast as you change keys.
+const COMBOS = ['', 'U', 'D', 'L', 'R', 'UL', 'UR', 'DL', 'DR'];
+const axisOf = (k) => [k.includes('L') ? -1 : k.includes('R') ? 1 : 0, k.includes('U') ? -1 : k.includes('D') ? 1 : 0];
+function rollout(sc, plan, first = 12, then = 24) {
+  const nav = sc.nav;
+  const move = (b, kx, ky) => {
+    b.vx *= DAMP; b.vy *= DAMP;
+    const nx = b.x + b.vx * DT, ny = b.y + b.vy * DT;
+    if (nav.solidAt(nx + Math.sign(b.vx) * 0.19, b.y)) b.vx *= -0.2; else b.x = nx;
+    if (nav.solidAt(b.x, ny + Math.sign(b.vy) * 0.19)) b.vy *= -0.2; else b.y = ny;
+    if (kx && kx * b.vx < VMAX) b.vx += kx * ACCEL;
+    if (ky && ky * b.vy < VMAX) b.vy += ky * ACCEL;
+  };
+  const r = { ...sc.runner }, cs = sc.chasers.map((c) => ({ ...c }));
+  const H = first + then;
+  let closest = Infinity;
+  for (let t = 1; t <= H; t++) {
+    const [kx, ky] = axisOf(t <= first ? plan[0] : plan[1]);
+    move(r, kx, ky);
+    for (const c of cs) {
+      const d = Math.hypot(r.x - c.x, r.y - c.y), lead = Math.min(1, d / VMAX);
+      const ax = r.x + r.vx * lead - c.x, ay = r.y + r.vy * lead - c.y;
+      move(c, Math.abs(ax) > 0.05 ? Math.sign(ax) : 0, Math.abs(ay) > 0.05 ? Math.sign(ay) : 0);
+      const d2 = Math.hypot(r.x - c.x, r.y - c.y);
+      if (d2 <= 0.38) return { caught: t, score: t / H - 10 };
+      closest = Math.min(closest, d2);
+    }
+  }
+  const end = nav.tileAt(r.x, r.y);
+  const m = end >= 0 ? Math.max(-60, Math.min(60, sc.margin[end])) : -60;
+  const room = end >= 0 ? Math.min(nav.room[end], 4) / 4 : 0;
+  return { caught: 0, score: 2 * Math.min(closest, 1.5) + m / 60 + room + Math.hypot(r.vx, r.vy) / VMAX };
+}
+
+function bestDodge(sc) {
+  if (sc.dodge) return sc.dodge;   // one search per scene, shared by the runner and the chasers
+  let best = null;
+  for (const a of COMBOS) for (const b of COMBOS) {
+    const r = rollout(sc, [a, b]);
+    if (!best || r.score > best.score) best = { ...r, keys: a };
+  }
+  return (sc.dodge = best);
+}
+
+// ---------------------------------------------------------------- the runner
+
+const RUNNER = [
+  { id: 'flee', name: 'Flee', priority: 0,
+    trigger: 'always',
+    does: 'Run to the tile within 8 steps that is farthest (around walls) from the nearest chaser.',
+    when: () => true,
+    act(sc, me) {
+      const from = sc.nav.flowTo(sc.chaserTiles[sc.nearest]), near = sc.nav.flowTo(sc.runnerTile);
+      let best = sc.runnerTile;
+      for (const i of sc.nav.tiles) if (near[i] >= 0 && near[i] <= 8 && from[i] > from[best]) best = i;
+      return { target: sc.nav.centre(best) };
+    } },
+  { id: 'space', name: 'Find space', priority: 10,
+    trigger: 'always (over Flee)',
+    does: 'Go to the tile you reach first by the most time (the far side of your dominance region, from the Voronoi pursuit papers), preferring tiles with room around them over dead ends, by a path through tiles you reach first.',
+    when: () => true,
+    act(sc, me, mem) {
+      const e = escapeTarget(sc, sc.margin, { goal: !!sc.goalSet, prev: mem.escape });
+      mem.escape = e.tile;
+      return { target: sc.nav.centre(e.tile), flow: safeFlow(sc, e.tile), note: `margin ${sc.margin[e.tile].toFixed(0)}` };
+    } },
+  { id: 'orbit', name: 'Loop the island', priority: 20,
+    trigger: 'an island is within 4 tiles and a chaser is within 1.5 s',
+    does: 'Circle the island, always going round the way that keeps it between you and the nearest chaser.',
+    when: (sc) => sc.nav.islands.length && sc.danger < 90 && nearIsland(sc),
+    act(sc, me, mem) {
+      const isl = nearIsland(sc), c = sc.chasers[sc.nearest];
+      const a = angleAround(isl, sc.runner), ac = angleAround(isl, c);
+      let dir = Math.sign(wrap(a - ac)) || 1;
+      // keep going the same way unless the chaser has crossed round in front
+      if (mem.orbitDir && Math.abs(wrap(a - ac)) > 0.6) dir = mem.orbitDir;
+      mem.orbitDir = dir;
+      const p = ringPoint(sc, isl, a + dir * 0.9);
+      return p ? { target: p, note: dir > 0 ? 'clockwise' : 'anticlockwise' } : null;
+    } },
+  { id: 'home', name: 'Go home', priority: 30,
+    trigger: 'goal mode, and the goal is in your dominance region (you get there first)',
+    does: 'Run for the goal by the safest path. Until then, Find space leans toward the goal. (Shishika & Kumar: the runner wins when its region touches the target.)',
+    when: (sc) => sc.goal >= 0 && sc.margin[sc.goal] > 6,
+    act(sc, me) {
+      return { target: sc.nav.centre(sc.goal), flow: safeFlow(sc, sc.goal), note: `goal margin ${sc.margin[sc.goal].toFixed(0)}` };
+    } },
+  { id: 'juke', name: 'Juke', priority: 40,
+    trigger: `a chaser is less than ${TUNE.jukeTicks} ticks and ${TUNE.jukeTiles} tiles from you`,
+    does: 'Look 0.6 s ahead: try every pair of key combos (one for 0.2 s, then one for 0.4 s, 81 plans) with the chasers aiming where you are heading, and press the first half of the plan that avoids a tag longest and leaves you with room, margin and speed. Their momentum means they cannot turn as fast as you change keys.',
+    when: (sc) => sc.danger < TUNE.jukeTicks && Math.hypot(sc.runner.x - sc.chasers[sc.nearest].x, sc.runner.y - sc.chasers[sc.nearest].y) < TUNE.jukeTiles * TILE,
+    act(sc) {
+      const best = bestDodge(sc);
+      return { keys: best.keys, note: best.caught ? `caught in ${best.caught}` : `keys ${best.keys || '-'}` };
+    } },
+];
+
+// ---------------------------------------------------------------- the chasers
+
+const CHASER = [
+  { id: 'beeline', name: 'Beeline', priority: 0,
+    trigger: 'always',
+    does: 'Go straight at where the runner is now.',
+    when: () => true,
+    act: (sc) => ({ target: { x: sc.runner.x, y: sc.runner.y } }) },
+  { id: 'lead', name: 'Lead the runner', priority: 10,
+    trigger: 'always (over Beeline)',
+    does: 'Predict where the runner is going if it keeps pushing the way it moves, and go to the first point on that line you can get to in time.',
+    when: () => true,
+    act: (sc, me) => ({ target: intercept(sc, me.k) }) },
+  { id: 'contain', name: 'Contain', priority: 15,
+    trigger: 'you are close to the runner (within SPEED.range ticks), and it still has a good dodge (the runner\'s own 81-plan look-ahead finds one that gets away)',
+    does: 'Do not lunge: a miss carries you past and lets the runner through. Shadow it a little way off on the side it wants to escape to, matching its velocity with a capped closing speed (speed.js, trained), until it has no good dodge left; then Lead goes for the tag. (TagPro defence: contain, commit only when sure. Casini & Garulli: equal-speed capture only works from some states.)',
+    when: (sc, me) => { const d = bestDodge(sc); return sc.tC[me.k][sc.runnerTile] <= SPEED.range && !d.caught && d.score >= SPEED.commitBelow; },
+    act(sc, me, mem) {
+      const e = escapeTarget(sc, sc.margin, { goal: !!sc.goalSet, prev: mem.read });
+      mem.read = e.tile;
+      const r = sc.runner, c = sc.nav.centre(e.tile), L = Math.hypot(c.x - r.x, c.y - r.y) || 1;
+      const shadow = { x: (c.x - r.x) / L * SPEED.standoff * TILE, y: (c.y - r.y) / L * SPEED.standoff * TILE };
+      const p = { x: r.x + r.vx * SPEED.lead + shadow.x, y: r.y + r.vy * SPEED.lead + shadow.y };
+      return { target: p, shadow, note: 'shadow' };
+    } },
+  { id: 'together', name: 'Contain together', priority: 16, team: true,
+    trigger: 'two chasers, both within reach of the runner (Contain range and a half) and neither going for the tag',
+    does: 'Split the map into four quadrants centred on the runner, each worth the runner\'s own tiles in it (diagonals are the fastest way to move, so these are its four real escapes). The two chasers hold the two most valuable quadrants, one each, shadowing the runner on that diagonal, paired up so their total travel is shortest. Whichever way it breaks, it runs at a chaser already matching its speed, and once its look-ahead finds no way out both commit. (Runs as a team step in match.js; its own trigger is never picked.)',
+    when: () => false, act: () => null },
+  { id: 'cutoff', name: 'Cut off', priority: 20,
+    trigger: 'the runner is more than 0.7 s away from you',
+    does: 'Work out where a smart runner wants to go (the far side of its dominance region) and get to its route there first, shrinking its region instead of following it.',
+    when: (sc, me) => sc.tC[me.k][sc.runnerTile] > 40,
+    act(sc, me, mem) {
+      const e = escapeTarget(sc, sc.margin, { goal: !!sc.goalSet, prev: mem.read });
+      mem.read = e.tile;
+      return { target: cutPath(sc, me.k, e.tile) };
+    } },
+  { id: 'pincer', name: 'Pincer', priority: 25,
+    trigger: 'two chasers, and you are the one farther from the runner',
+    does: 'Your teammate presses. You guess where the runner flees from your teammate alone and wait on that route, so it runs into you. (Shishika & Kumar: two defenders catch what one cannot.)',
+    when: (sc, me) => sc.chasers.length > 1 && me.k !== sc.presser && sc.tC[me.k][sc.runnerTile] > 24,
+    act(sc, me, mem) {
+      const solo = sc.marginVs(sc.presser);
+      const e = escapeTarget(sc, solo, { goal: !!sc.goalSet, prev: mem.pin });
+      mem.pin = e.tile;
+      return { target: cutPath(sc, me.k, e.tile), note: 'cutter' };
+    } },
+  { id: 'trap', name: 'Trap the loop', priority: 30,
+    trigger: 'two chasers, the runner is circling an island, and you are the farther chaser',
+    does: 'Go round the island the other way so the runner loops into you.',
+    when: (sc, me) => sc.chasers.length > 1 && me.k !== sc.presser && nearIsland(sc, 3 * TILE),
+    act(sc) {
+      const isl = nearIsland(sc, 3 * TILE), p = sc.chasers[sc.presser];
+      const a = angleAround(isl, sc.runner), ap = angleAround(isl, p);
+      // the runner goes round away from the presser; meet it about a third of a lap ahead
+      const dir = Math.sign(wrap(a - ap)) || 1;
+      const q = ringPoint(sc, isl, a + dir * 2.1, TILE);
+      return q ? { target: q, note: 'trap' } : null;
+    } },
+  { id: 'guard', name: 'Guard the goal', priority: 40,
+    trigger: 'goal mode, you are the guard (closest chaser to the goal), and the runner is more than 0.5 s away',
+    does: 'Stand on the runner\'s route to its goal at the first point you reach comfortably before it, so the goal never enters its region ("delay indefinitely" from the reach-avoid papers).',
+    when: (sc, me) => sc.goal >= 0 && me.k === sc.guard && sc.tC[me.k][sc.runnerTile] > 30,
+    act(sc, me) {
+      const { nav } = sc, T = sc.tC[me.k];
+      const path = nav.path(sc.runnerTile, nav.flowTo(sc.goal), 400);
+      for (let j = 2; j < path.length; j++) if (T[path[j]] + 6 <= sc.tR[path[j]]) return { target: nav.centre(path[j]), note: 'guard' };
+      return { target: nav.centre(sc.goal), note: 'guard (goal)' };
+    } },
+];
+
+module.exports = { RUNNER, CHASER, TUNE, escapeTarget, rollout, bestDodge, predict, intercept, cutPath, nearIsland };
+})();
+
+;load('behaviors');</script>
+<script>window.module = { exports: {} };
+// match.js - run chaser and runner bots in a Playground.
+//
+//   const m = new Match(pg, {
+//     runner: 'runner', chasers: ['c1', 'c2'],
+//     goal: [tx, ty],                     // optional: the runner wins by reaching this tile
+//     runnerOff: ['juke'], chaserOff: [...],     // behaviours (behaviors.js) to switch off
+//     plain: false,                       // true: no pathfinding or braking, just hold the keys at the target
+//     policy: new Policy(weights),        // optional: a learned network (policy.js) drives the chasers
+//     drive: ['c1', 'c2', 'runner'],      // which balls the bots press keys for (default all)
+//     think: 3,                           // ticks between decisions (keys are steered every tick)
+//   });
+//   each tick: m.tick(); pg.step(); then m.result() -> null | 'tag' | 'goal'
+//
+// m.debug has what each bot is doing right now (behaviour, target, aim), for drawing.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { Nav, TILE } = require('./nav');
+const { timeField } = require('./motion');
+const { steer } = require('./steer');
+const { matchKeys, SPEED } = require('./speed');
+const { RUNNER, CHASER } = require('./behaviors');
+
+const CAPTURE = 0.38;   // two ball radii: the distance at which balls touch
+
+const navCache = new WeakMap();   // one Nav per map object, shared by every match on it
+function navFor(map) { let n = navCache.get(map); if (!n) navCache.set(map, n = new Nav(map)); return n; }
+
+// the behaviours a side uses, highest priority first; the fallback (priority 0) can't be switched off
+function behaviours(list, off = [], side) {
+  for (const id of off) if (!list.some((b) => b.id === id)) throw new Error(`unknown ${side} behaviour '${id}' (have: ${list.map((b) => b.id).join(', ')})`);
+  return list.filter((b) => b.priority === 0 || !off.includes(b.id)).sort((a, b) => b.priority - a.priority);
+}
+
+class Match {
+  constructor(pg, opts = {}) {
+    this.pg = pg;
+    this.nav = navFor(pg.map);
+    this.runnerId = opts.runner || 'runner';
+    this.chaserIds = opts.chasers || ['chaser'];
+    this.drive = new Set(opts.drive || [this.runnerId, ...this.chaserIds]);
+    this.think = opts.think || 3;
+    this.goal = opts.goal ? this.nav.tileAt(opts.goal[0] * TILE, opts.goal[1] * TILE) : -1;
+    this.runnerBehaviours = behaviours(RUNNER, opts.runnerOff, 'runner');
+    this.chaserBehaviours = behaviours(CHASER, opts.chaserOff, 'chaser');
+    this.plain = !!opts.plain;
+    this.policy = opts.policy || null;
+    this.policyKeys = {};
+    this.plans = {};
+    this.mem = {};
+    this.debug = { bots: {} };
+    this.passes = [];      // [{ chaser, tick }]: times the runner got past a chaser (see watchPasses)
+    this.engaged = {};
+    this.wasPast = {};     // goal mode: chaser id -> runner was past it at the last check
+    this.pastN = 0;
+  }
+
+  // The runner "gets past" a chaser when it ends up on the other side of the chaser from where it
+  // was when the chaser engaged it (first came within 3 tiles), more than 1.5 tiles clear and not
+  // tagged. A chaser that has been got past is behind the play. An engagement ends when they are
+  // 6 tiles apart.
+  // With a goal it is the "past N" of the tagpro-findings glossary instead: the runner is past a
+  // chaser while it reaches the goal before that chaser does (who gets there first, momentum
+  // included). Same top speed, so a passed chaser cannot get back in front on its own.
+  watchPasses() {
+    if (this.goal >= 0) {
+      const sc = this.sc;
+      this.pastN = 0;
+      this.chaserIds.forEach((id, k) => {
+        const past = sc.tR[this.goal] + 6 < sc.tC[k][this.goal];   // 6 ticks of slack: clearly first
+        if (past) this.pastN++;
+        if (past && !this.wasPast[id]) this.passes.push({ chaser: id, tick: this.pg.tick });
+        this.wasPast[id] = past;
+      });
+      return;
+    }
+    const st = this.pg.state().balls, r = st[this.runnerId];
+    for (const id of this.chaserIds) {
+      const c = st[id], dx = r.x - c.x, dy = r.y - c.y, d = Math.hypot(dx, dy), e = this.engaged[id];
+      if (!e) { if (d < 3 * TILE) this.engaged[id] = { ux: dx / d, uy: dy / d }; continue; }
+      if (d > 6 * TILE) { delete this.engaged[id]; continue; }
+      if (!e.past && d > 1.5 * TILE && dx * e.ux + dy * e.uy < 0) { e.past = true; this.passes.push({ chaser: id, tick: this.pg.tick }); }
+    }
+  }
+
+  // everything the behaviours look at, rebuilt every `think` ticks
+  scene() {
+    const nav = this.nav, st = this.pg.state().balls;
+    const runner = st[this.runnerId], chasers = this.chaserIds.map((id) => st[id]);
+    const tR = timeField(nav, runner, 0);
+    const tC = chasers.map((c) => timeField(nav, c, CAPTURE));
+    const margin = new Float64Array(nav.N);
+    for (let i = 0; i < nav.N; i++) { let m = Infinity; for (const T of tC) m = Math.min(m, T[i]); margin[i] = m - tR[i]; }
+    const runnerTile = nav.tileAt(runner.x, runner.y), chaserTiles = chasers.map((c) => nav.tileAt(c.x, c.y));
+    const toRunner = tC.map((T) => T[runnerTile]);
+    const presser = toRunner.indexOf(Math.min(...toRunner));
+    // the guard is the chaser closest to the goal; with one chaser, only once the goal is at risk
+    let guard = -1;
+    if (this.goal >= 0) {
+      const toGoal = tC.map((T) => T[this.goal]);
+      guard = toGoal.indexOf(Math.min(...toGoal));
+      if (chasers.length > 1 && guard === presser && toRunner[presser] < 40) guard = 1 - presser;
+      if (chasers.length === 1 && tR[this.goal] > tC[0][this.goal] + 60) guard = -1;
+    }
+    let nearest = 0, nd = Infinity;
+    chasers.forEach((c, k) => { const d = Math.hypot(c.x - runner.x, c.y - runner.y); if (d < nd) { nd = d; nearest = k; } });
+    return {
+      nav, tick: this.pg.tick, runner, chasers, tR, tC, margin, runnerTile, chaserTiles,
+      presser, guard, nearest, danger: Math.min(...toRunner), goal: this.goal, goalSet: this.goal >= 0,
+      marginVs: (k) => { const m = new Float64Array(nav.N); for (let i = 0; i < nav.N; i++) m[i] = tC[k][i] - tR[i]; return m; },
+    };
+  }
+
+  decide(sc) {
+    const pick = (list, me, mem) => {
+      for (const b of list) {
+        if (!b.when(sc, me, mem)) continue;
+        const plan = b.act(sc, me, mem);
+        if (plan) return { ...plan, behaviour: b.id };
+      }
+      return {};
+    };
+    const plans = {};
+    plans[this.runnerId] = pick(this.runnerBehaviours, { id: this.runnerId }, this.mem.runner || (this.mem.runner = {}));
+    this.chaserIds.forEach((id, k) => { plans[id] = pick(this.chaserBehaviours, { id, k }, this.mem[id] || (this.mem[id] = {})); });
+    if (this.chaserIds.length > 1 && !this.plain) {
+      if (!this.together(sc, plans)) this.spread(sc, plans);
+    }
+    return plans;
+  }
+
+  // Contain together: both chasers close and neither committing -> each holds one of the runner's
+  // two best escape quadrants. Returns true when it set the plans.
+  together(sc, plans) {
+    this.debug.quadrants = null;
+    if (!this.chaserBehaviours.some((b) => b.id === 'together')) return false;
+    const reach = SPEED.range * 1.5;
+    if (sc.tC.some((T) => T[sc.runnerTile] > reach)) return false;
+    const ids = this.chaserIds;
+    if (ids.some((id) => plans[id].behaviour === 'lead')) return false;   // someone is going for the tag
+    const { nav, runner: r } = sc;
+    // split the map into quadrants centred on the runner; each is worth the runner's own tiles in
+    // it (more for tiles it reaches well before any chaser). Diagonals are the fastest way to move,
+    // so the runner's real escapes are its four diagonal quadrants.
+    const Q = [{ ux: 1, uy: -1, name: 'up-right' }, { ux: -1, uy: -1, name: 'up-left' }, { ux: -1, uy: 1, name: 'down-left' }, { ux: 1, uy: 1, name: 'down-right' }]
+      .map((q) => ({ ...q, ux: q.ux / Math.SQRT2, uy: q.uy / Math.SQRT2, value: 0 }));
+    // (tiles it nearly reaches first count a little, so a trapped runner's quadrants still differ)
+    for (const i of nav.tiles) {
+      if (sc.margin[i] <= -30) continue;
+      const c = nav.centre(i), right = c.x >= r.x, up = c.y < r.y;
+      Q[up ? (right ? 0 : 1) : (right ? 3 : 2)].value += (Math.min(sc.margin[i], 60) + 30) / 90;
+    }
+    const order = [...Q].sort((a, b) => b.value - a.value);
+    const d1 = order[0], d2 = order[1];
+    this.debug.quadrants = { x: r.x, y: r.y, Q };
+    const spot = (d) => ({ x: d.ux * SPEED.standoff * TILE, y: d.uy * SPEED.standoff * TILE });
+    const at = (k, d) => Math.hypot(r.x + d.ux * SPEED.standoff * TILE - sc.chasers[k].x, r.y + d.uy * SPEED.standoff * TILE - sc.chasers[k].y);
+    const swap = at(0, d1) + at(1, d2) > at(0, d2) + at(1, d1);
+    [[0, swap ? d2 : d1], [1, swap ? d1 : d2]].forEach(([k, d]) => {
+      const sh = spot(d);
+      d.holder = ids[k];
+      plans[ids[k]] = { target: { x: r.x + r.vx * SPEED.lead + sh.x, y: r.y + r.vy * SPEED.lead + sh.y }, shadow: sh, behaviour: 'together', note: `holds ${d.name}` };
+    });
+    return true;
+  }
+
+  // two chasers heading for the same spot: the one farther from the runner goes round the other side
+  spread(sc, plans) {
+    const [a, b] = this.chaserIds, pa = plans[a], pb = plans[b];
+    if (!pa.target || !pb.target) return;
+    const ca = sc.chasers[0], cb = sc.chasers[1];
+    const close = Math.hypot(pa.target.x - pb.target.x, pa.target.y - pb.target.y) < 3 * TILE || Math.hypot(ca.x - cb.x, ca.y - cb.y) < 2 * TILE;
+    if (!close) return;
+    const far = sc.tC[0][sc.runnerTile] > sc.tC[1][sc.runnerTile] ? 0 : 1, near = 1 - far;
+    if (sc.tC[far][sc.runnerTile] < 30) return;   // both already on top of it: just tag
+    const n = sc.chasers[near], r = sc.runner, L = Math.hypot(r.x - n.x, r.y - n.y) || 1;
+    const i = sc.nav.tileAt(r.x + (r.x - n.x) / L * 3 * TILE, r.y + (r.y - n.y) / L * 3 * TILE);
+    if (i < 0) return;
+    const p = plans[this.chaserIds[far]];
+    p.target = sc.nav.centre(i); p.flow = null; p.note = 'spread';
+  }
+
+  // call before every pg.step()
+  tick() {
+    const pg = this.pg;
+    if (!this.sc || pg.tick % this.think === 0 || !pg.byId[this.runnerId]) {
+      this.sc = this.scene();
+      this.plans = this.decide(this.sc);
+    }
+    const st = pg.state().balls;
+    for (const id of [this.runnerId, ...this.chaserIds]) {
+      const plan = this.plans[id], s = st[id];
+      if (!plan || !s) continue;
+      let keys = plan.keys, aim = null;
+      // shadowing: match the runner's velocity, from fresh positions every tick, when nothing is in the way
+      if (keys == null && plan.shadow && !this.plain) {
+        const m = matchKeys(s, st[this.runnerId], plan.shadow);
+        if (this.nav.clear(s.x, s.y, m.spot.x, m.spot.y)) { keys = m.keys; aim = m.spot; }
+      }
+      if (keys == null && plan.target) {
+        const r = steer(this.nav, s, plan.target, { pathfind: !this.plain, brake: !this.plain, flow: plan.flow, stop: plan.stop });
+        keys = r.keys; aim = r.aim;
+      }
+      if (this.drive.has(id)) pg.setKeys(id, keys || '');
+      this.debug.bots[id] = { behaviour: plan.behaviour, note: plan.note || '', target: plan.target || null, aim, keys: keys || '' };
+    }
+    this.debug.scene = this.sc;
+    // a learned policy replaces the chasers' keys (the hand-written plan above is its hint)
+    if (this.policy) {
+      this.chaserIds.forEach((id, k) => {
+        if (pg.tick % this.think === 0 || this.policyKeys[id] == null) this.policyKeys[id] = this.policy.keys(this, k);
+        if (this.drive.has(id)) pg.setKeys(id, this.policyKeys[id]);
+        this.debug.bots[id] = { ...this.debug.bots[id], behaviour: 'network', note: `hint ${this.debug.bots[id].keys || '-'}`, keys: this.policyKeys[id] };
+      });
+    }
+    if (pg.tick % this.think === 0) this.watchPasses();
+  }
+
+  // a tag with only one chaser within 3 tiles: a "solo" (tagpro-findings primer: a carrier should
+  // only die when contained by two or more, so a solo is the runner's mistake)
+  solo() {
+    const st = this.pg.state().balls, r = st[this.runnerId];
+    return this.chaserIds.filter((id) => Math.hypot(st[id].x - r.x, st[id].y - r.y) < 3 * TILE).length <= 1;
+  }
+
+  // 'tag' (a chaser touches the runner), 'goal' (the runner reached its goal tile) or null
+  result() {
+    for (const c of this.chaserIds) if (this.pg.touching(c, this.runnerId)) return 'tag';
+    if (this.goal >= 0) {
+      const r = this.pg.ballState(this.runnerId), g = this.nav.centre(this.goal);
+      if (Math.hypot(r.x - g.x, r.y - g.y) < 0.3) return 'goal';
+    }
+    return null;
+  }
+}
+
+module.exports = { Match, navFor, CAPTURE };
+})();
+
+;load('match');</script>
+<script>window.module = { exports: {} };
+// policy.js - a learned chaser: a small neural network that picks one of the 9 key combos every
+// think (3 ticks), from what one chaser can see. Trained by rl/train.js (behaviour cloning from the
+// hand-written chasers, then PPO). Runs in Node and in the browser.
+//
+//   const m = new Match(pg, { ...game, policy: new Policy(weights) });   // chasers use the network
+//
+// What a chaser sees (all from its own position, in tiles / 10 and speeds / 2.5):
+//   the runner's offset and velocity, its own velocity, its teammate's offset and velocity (zeros
+//   with one chaser), the distance to the runner, wall distances in 8 directions around itself
+//   and around the runner, the runner's four quadrants (share of its territory in each), how much
+//   territory the runner has, how many ticks it is from the runner, and (with HINT) the keys the
+//   hand-written chaser would press, so the network can learn when to do something else.
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { TILE } = require('./nav');
+
+const COMBOS = ['', 'U', 'D', 'L', 'R', 'UL', 'UR', 'DL', 'DR'];
+const RAYS = 8, RAY_MAX = 8;   // directions, tiles
+const SIZE = { base: 2 + 2 + 2 + 4 + 1 + RAYS + RAYS + 4 + 1 + 1 + 1, hint: 9 };
+
+function rays(nav, x, y, out, o) {
+  for (let a = 0; a < RAYS; a++) {
+    const ux = Math.cos(a * Math.PI / 4), uy = Math.sin(a * Math.PI / 4);
+    let d = 0;
+    while (d < RAY_MAX * TILE && !nav.solidAt(x + ux * (d + 0.19), y + uy * (d + 0.19))) d += 0.1;
+    out[o + a] = d / (RAY_MAX * TILE);
+  }
+  return o + RAYS;
+}
+
+const clip = (v, m = 3) => Math.max(-m, Math.min(m, v));
+
+// features for chaser k of match m (after m.tick() has built the scene and plans)
+function features(m, k, hint, out) {
+  const sc = m.sc, nav = m.nav, st = m.pg.state().balls;
+  const me = st[m.chaserIds[k]], r = st[m.runnerId], mateId = m.chaserIds[1 - k], mate = mateId ? st[mateId] : null;
+  const T = 10 * TILE, V = 2.5;
+  let o = 0;
+  out[o++] = clip((r.x - me.x) / T); out[o++] = clip((r.y - me.y) / T);
+  out[o++] = r.vx / V; out[o++] = r.vy / V;
+  out[o++] = me.vx / V; out[o++] = me.vy / V;
+  if (mate) { out[o++] = clip((mate.x - me.x) / T); out[o++] = clip((mate.y - me.y) / T); out[o++] = mate.vx / V; out[o++] = mate.vy / V; }
+  else { out[o++] = 0; out[o++] = 0; out[o++] = 0; out[o++] = 0; }
+  out[o++] = clip(Math.hypot(r.x - me.x, r.y - me.y) / T);
+  o = rays(nav, me.x, me.y, out, o);
+  o = rays(nav, r.x, r.y, out, o);
+  // the runner's quadrants: share of its territory (tiles it reaches first) up-right, up-left, down-left, down-right
+  const q = [0, 0, 0, 0];
+  let total = 0;
+  for (const i of nav.tiles) {
+    if (sc.margin[i] <= 0) continue;
+    const c = nav.centre(i);
+    q[c.y < r.y ? (c.x >= r.x ? 0 : 1) : (c.x >= r.x ? 3 : 2)]++; total++;
+  }
+  for (let j = 0; j < 4; j++) out[o++] = total ? q[j] / total : 0;
+  out[o++] = Math.min(1, total / 300);
+  out[o++] = Math.min(2, sc.tC[k][sc.runnerTile] / 120);
+  out[o++] = mate ? 1 : 0;
+  if (hint) {
+    const keys = (m.debug.bots[m.chaserIds[k]] || {}).keys || '';
+    const a = COMBOS.indexOf(sortKeys(keys));
+    for (let j = 0; j < 9; j++) out[o + j] = j === a ? 1 : 0;
+    o += 9;
+  }
+  return o;
+}
+
+// 'LU' -> 'UL' (the order COMBOS uses)
+const sortKeys = (k) => (k.includes('U') ? 'U' : k.includes('D') ? 'D' : '') + (k.includes('L') ? 'L' : k.includes('R') ? 'R' : '');
+
+// forward pass of an MLP with tanh hidden layers: { sizes, W: [Float32Array], b: [Float32Array] }
+function forward(net, x, acts) {
+  let a = x;
+  for (let l = 0; l < net.W.length; l++) {
+    const n = net.sizes[l], m = net.sizes[l + 1], W = net.W[l], y = acts ? acts[l + 1] : new Float32Array(m);
+    y.set(net.b[l]);
+    for (let p = 0; p < n; p++) { const v = a[p]; if (v === 0) continue; const off = p * m; for (let j = 0; j < m; j++) y[j] += v * W[off + j]; }
+    if (l < net.W.length - 1) for (let j = 0; j < m; j++) y[j] = Math.tanh(y[j]);
+    a = y;
+  }
+  return a;
+}
+
+function softmax(z) {
+  let mx = -Infinity; for (const v of z) mx = Math.max(mx, v);
+  const e = Array.from(z, (v) => Math.exp(v - mx)), s = e.reduce((a, b) => a + b, 0);
+  return e.map((v) => v / s);
+}
+
+class Policy {
+  // weights: { hint, sizes, W: [[...]], b: [[...]] } as written by rl/train.js
+  constructor(weights, opts = {}) {
+    this.hint = !!weights.hint;
+    this.net = { sizes: weights.sizes, W: weights.W.map((w) => Float32Array.from(w)), b: weights.b.map((v) => Float32Array.from(v)) };
+    this.x = new Float32Array(weights.sizes[0]);
+    this.greedy = opts.greedy !== false;
+  }
+  // keys for chaser k (greedy = the most likely combo)
+  keys(m, k, rng = Math.random) {
+    features(m, k, this.hint, this.x);
+    const p = softmax(forward(this.net, this.x));
+    let a = 0;
+    if (this.greedy) { for (let j = 1; j < 9; j++) if (p[j] > p[a]) a = j; }
+    else { let u = rng(); while (a < 8 && u > p[a]) { u -= p[a]; a++; } }
+    return COMBOS[a];
+  }
+}
+
+module.exports = { Policy, features, forward, softmax, COMBOS, SIZE, sortKeys };
+})();
+
+;load('policy');</script>
+<script>window.module = { exports: {} };
+// bots.js - chase and escape bots for chase-playground.
+//
+//   const bots = require('chase-playground/bots');   // or require('./bots/bots') in this repo
+//   const pg = new Playground({ map, seed });
+//   const game = bots.setupGame(pg, { mode: '2v1' });   // adds the balls, picks a goal in goal modes
+//   const m = new bots.Match(pg, { ...game, chaserOff: ['pincer'] });
+//   while (!m.result() && pg.tick < 1800) { m.tick(); pg.step(); }
+//
+// modes: '1v1', '2v1' (chase: the runner wins by lasting), 'goal1', 'goal2' (the runner also
+// wins by reaching its goal tile; 1 or 2 chasers).
+(() => { // own scope, so ui/index.html can load these files as plain <script> tags
+const { Match, navFor } = require('./match');
+const behaviors = require('./behaviors');
+const { Policy } = require('./policy');
+
+const MODES = {
+  '1v1': { chasers: 1, goal: false },
+  '2v1': { chasers: 2, goal: false },
+  goal1: { chasers: 1, goal: true },
+  goal2: { chasers: 2, goal: true },
+};
+
+// spawns: the runner anywhere, chasers at least `gap` tiles from it (and 4 from each other).
+// The goal is the open tile `goalSteps` steps (around walls) from the runner, or the farthest one.
+function setupGame(pg, opts = {}) {
+  const mode = MODES[opts.mode || '2v1'];
+  if (!mode) throw new Error(`unknown mode '${opts.mode}' (have: ${Object.keys(MODES).join(', ')})`);
+  const gap = opts.gap ?? 10;
+  pg.addBall({ id: 'runner', team: 2 });
+  const chasers = [];
+  for (let k = 1; k <= mode.chasers; k++) {
+    const id = mode.chasers === 1 ? 'chaser' : 'chaser' + k;
+    pg.addBall({ id, team: 1, minDistance: 4 });
+    // minDistance is from every ball; we want `gap` from the runner and 4 from the other chaser
+    const r = pg.ballState('runner');
+    for (let n = 0; n < 200; n++) {
+      const s = pg.randomSpot(pg.ball(id), 4);
+      if (Math.hypot(s.x - r.x, s.y - r.y) >= gap * 0.4) { pg.place(id, s.x, s.y); break; }
+    }
+    chasers.push(id);
+  }
+  let goal = null;
+  if (mode.goal) {
+    const nav = navFor(pg.map), r = pg.ballState('runner');
+    const steps = nav.flowTo(nav.tileAt(r.x, r.y)), want = opts.goalSteps ?? 30;
+    let best = -1;
+    for (const i of nav.tiles) {
+      if (steps[i] < 0) continue;
+      if (best < 0 || Math.abs(steps[i] - want) < Math.abs(steps[best] - want)) best = i;
+    }
+    goal = nav.xy(best);
+  }
+  return { runner: 'runner', chasers, goal, mode: opts.mode || '2v1' };
+}
+
+// play one game to the end. Returns { result: 'tag' | 'goal' | 'time', ticks, passes }
+// (passes: how many times the runner got past a chaser, see Match.watchPasses; solo: tagged with
+// only one chaser near, in 2-chaser modes)
+function playGame(pg, game, opts = {}) {
+  const m = new Match(pg, { ...game, ...opts });
+  const limit = opts.limit ?? 60 * 30;
+  while (pg.tick < limit) {
+    m.tick(); pg.step();
+    const r = m.result();
+    if (r) return { result: r, ticks: pg.tick, passes: m.passes.length, solo: r === 'tag' && game.chasers.length > 1 && m.solo() };
+  }
+  return { result: 'time', ticks: pg.tick, passes: m.passes.length };
+}
+
+module.exports = { Match, Policy, setupGame, playGame, MODES, navFor, ...behaviors };
+})();
+
+;load('bots');</script>
+<script>delete window.module;</script>
+<script>
+const { Playground, generateMap, addIslands, PHYSICS: PH } = MODS.index;
+const BOTS = MODS.bots, { spawnTiles } = MODS.maps;
+const $ = (id) => document.getElementById(id);
+
+// plain-language names for what each bot is doing
+const SAY = {
+  space: 'Running toward open space it can reach first',
+  flee: 'Running away',
+  orbit: 'Looping around an island to keep it between them',
+  juke: 'Dodging: trying every key combo half a second ahead',
+  home: 'Running for the goal',
+  beeline: 'Heading straight at the runner',
+  lead: 'Going for the tag, aiming where the runner is heading',
+  contain: 'Shadowing the runner without lunging (a miss would let it past)',
+  together: 'Guarding one of the runner\'s quadrants with its teammate',
+  cutoff: 'Cutting off where the runner wants to go',
+  pincer: 'Waiting on the runner\'s escape route while its teammate presses',
+  trap: 'Going round the island the other way to trap the loop',
+  guard: 'Guarding the goal',
+};
+
+// a brand new random map each game (BuildAMapWorkshop generator), sometimes with islands
+function newMap() {
+  const r = Math.random, odd = (n) => (n % 2 ? n : n + 1);
+  for (;;) {
+    const opts = { seed: Math.floor(r() * 1e9), width: odd(31 + Math.floor(r() * 26)), height: odd(31 + Math.floor(r() * 26)), randLeft: 0.3 + r() * 0.4, randRight: 0.3 + r() * 0.4, diagonals: r() };
+    let map = generateMap(opts);
+    const open = spawnTiles(map).length;
+    if (open < 350 || open > 1400) continue;
+    let islands = '';
+    const roll = r();
+    if (roll < 0.25) { map = addIslands(map, { seed: opts.seed, count: 2 + Math.floor(r() * 3) }); islands = `${map.islands} small islands`; }
+    else if (roll < 0.45) { map = addIslands(map, { seed: opts.seed, count: 2, size: [7, 9], shapes: ['square', 'diamond'] }); islands = `${map.islands} big islands`; }
+    return { map, info: `${opts.width} × ${opts.height} tiles, ${open} open tiles${islands ? ', ' + islands : ', no islands'}` };
+  }
+}
+
+let pg = null, match = null, map = null, ending = null, paused = false, acc = 0, last = performance.now(), pastSeen = 0;
+const score = { games: 0, tag: 0, away: 0, past: 0 }, trails = {};
+const held = { up: false, down: false, left: false, right: false };
+const LIMIT = 60 * 30;
+
+function start() {
+  const m = newMap();
+  map = m.map; $('mapinfo').textContent = m.info;
+  pg = new Playground({ map, seed: Math.floor(Math.random() * 1e9) });
+  const game = BOTS.setupGame(pg, { mode: $('mode').value });
+  match = new BOTS.Match(pg, game);
+  ending = null; pastSeen = 0; $('banner').style.display = 'none';
+  for (const k in trails) delete trails[k];
+  // the "play a chaser" choice names chaser1, which is just "chaser" in a 1 v 1
+  const opt = $('you').querySelector('option[value^="chaser"]');
+  opt.value = game.chasers[0];
+  fit();
+}
+
+function tick() {
+  if (ending || !pg) return;
+  const you = $('you').value;
+  match.drive = new Set(pg.balls.map((b) => b.id).filter((id) => id !== you));
+  match.tick();
+  if (you && pg.byId[you]) pg.setKeys(you, held);
+  pg.step();
+  if (match.passes.length > pastSeen) { score.past += match.passes.length - pastSeen; pastSeen = match.passes.length; }
+  for (const b of pg.balls) { const p = b.body.GetPosition(), t = trails[b.id] || (trails[b.id] = []); t.push([p.x, p.y]); if (t.length > 90) t.shift(); }
+  let r = match.result();
+  if (!r && pg.tick >= LIMIT) r = 'time';
+  if (r) {
+    score.games++; if (r === 'tag') score.tag++; else score.away++;
+    $('banner').textContent = r === 'tag' ? `Tagged after ${(pg.tick / 60).toFixed(1)} s` : 'The runner got away (30 s)';
+    $('banner').style.display = 'block';
+    ending = performance.now();
+    showScore();
+  }
+}
+
+function showScore() {
+  const s = score;
+  $('score').innerHTML = `${s.games} games: tagged ${s.tag}, got away ${s.away}<br>The runner got past a chaser ${s.past} time${s.past === 1 ? '' : 's'}`;
+}
+
+// ---------- drawing ----------
+const cv = $('c'), g = cv.getContext('2d');
+let layer = null, ts = 10, ox = 0, oy = 0;
+const SHAPES = { 1.1: [[-.5, .5], [-.5, -.5], [.5, .5]], 1.2: [[-.5, -.5], [.5, -.5], [-.5, .5]], 1.3: [[.5, -.5], [.5, .5], [-.5, -.5]], 1.4: [[.5, .5], [-.5, .5], [.5, -.5]] };
+const sx = (m) => ox + (m / PH.TILE + .5) * ts, sy = (m) => oy + (m / PH.TILE + .5) * ts;
+
+function fit() {
+  const dpr = devicePixelRatio || 1, r = cv.getBoundingClientRect();
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  if (!map) return;
+  ts = Math.max(2, Math.floor(Math.min((cv.width - 24 * dpr) / map.width, (cv.height - 24 * dpr) / map.height)));
+  ox = Math.floor((cv.width - ts * map.width) / 2); oy = Math.floor((cv.height - ts * map.height) / 2);
+  layer = document.createElement('canvas'); layer.width = map.width * ts; layer.height = map.height * ts;
+  const l = layer.getContext('2d');
+  for (let x = 0; x < map.width; x++) for (let y = 0; y < map.height; y++) {
+    const t = map.tiles[x][y];
+    if (t === 0) continue;
+    l.fillStyle = t === 1 ? '#8a8d93' : '#353943'; l.fillRect(x * ts, y * ts, ts, ts);
+    if (SHAPES[t]) { l.fillStyle = '#8a8d93'; l.beginPath(); SHAPES[t].forEach(([a, b], i) => l[i ? 'lineTo' : 'moveTo']((x + .5 + a) * ts, (y + .5 + b) * ts)); l.fill(); }
+  }
+}
+addEventListener('resize', fit);
+
+function draw() {
+  g.fillStyle = '#111318'; g.fillRect(0, 0, cv.width, cv.height);
+  if (!layer || !pg) return;
+  g.drawImage(layer, ox, oy);
+  const sc = match.debug.scene, nav = match.nav;
+  if (sc && $('shade').checked) {
+    for (const i of nav.tiles) {
+      const m = sc.margin[i], a = Math.min(1, Math.abs(m) / 60) * 0.32 + 0.06;
+      g.fillStyle = m > 0 ? `rgba(74,126,232,${a})` : `rgba(232,82,74,${a})`;
+      const [x, y] = nav.xy(i); g.fillRect(ox + x * ts, oy + y * ts, ts, ts);
+    }
+  }
+  const quad = match.debug.quadrants;
+  if (quad) {
+    const cx = sx(quad.x), cy = sy(quad.y);
+    g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1; g.setLineDash([2, 4]);
+    g.beginPath(); g.moveTo(ox, cy); g.lineTo(ox + map.width * ts, cy); g.moveTo(cx, oy); g.lineTo(cx, oy + map.height * ts); g.stroke(); g.setLineDash([]);
+  }
+  const R = PH.BALL_RADIUS / PH.TILE * ts, you = $('you').value;
+  for (const b of pg.balls) {
+    const d = match.debug.bots[b.id], p = b.body.GetPosition(), col = b.team === 2 ? '#4a7ee8' : '#e8524a';
+    if (d && d.target && b.id !== you) {
+      g.setLineDash([4, 4]); g.strokeStyle = b.team === 2 ? '#8fb3ff' : '#ff9a93'; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(sx(p.x), sy(p.y)); g.lineTo(sx(d.target.x), sy(d.target.y)); g.stroke(); g.setLineDash([]);
+    }
+    const t = trails[b.id] || [];
+    if (t.length > 1) { g.strokeStyle = col; g.globalAlpha = .35; g.lineWidth = Math.max(1, R / 4); g.beginPath(); t.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](sx(x), sy(y))); g.stroke(); g.globalAlpha = 1; }
+    g.fillStyle = col; g.beginPath(); g.arc(sx(p.x), sy(p.y), R, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = b.id === you ? '#fff' : 'rgba(0,0,0,.5)'; g.lineWidth = Math.max(1, R / 5); g.stroke();
+    g.fillStyle = '#fff'; g.font = `${Math.max(11, R)}px system-ui`; g.textAlign = 'center';
+    g.fillText(b.id === you ? 'you' : b.id, sx(p.x), sy(p.y) - R - 4);
+  }
+}
+
+function panel() {
+  if (!pg) return;
+  const you = $('you').value;
+  $('now').innerHTML = pg.balls.map((b) => {
+    const d = match.debug.bots[b.id] || {}, col = b.team === 2 ? 'var(--blue)' : 'var(--red)';
+    const doing = b.id === you ? 'You (arrow keys)' : SAY[d.behaviour] || '…';
+    return `<div class="who"><b style="background:${col}"></b>${b.id}<span class="doing">${doing}</span></div>`;
+  }).join('');
+}
+
+function frame(now) {
+  const dt = Math.min(250, now - last); last = now;
+  if (pg && !paused) { acc += dt * +$('speed').value; while (acc >= 1000 / 60 && !paused && !ending) { acc -= 1000 / 60; tick(); } if (ending) acc = 0; }
+  if (ending && now - ending > 1800) start();
+  draw(); panel();
+  requestAnimationFrame(frame);
+}
+
+// ---------- controls ----------
+const KEYMAP = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+addEventListener('keydown', (e) => {
+  if (KEYMAP[e.code]) { held[KEYMAP[e.code]] = true; e.preventDefault(); }
+  if (e.code === 'KeyN') start();
+  if (e.code === 'Space') { e.preventDefault(); $('pause').click(); }
+});
+addEventListener('keyup', (e) => { if (KEYMAP[e.code]) held[KEYMAP[e.code]] = false; });
+addEventListener('blur', () => { for (const k in held) held[k] = false; });
+addEventListener('change', (e) => { if (e.target.matches('select, input')) e.target.blur(); });
+$('pause').onclick = (e) => { paused = !paused; $('pause').textContent = paused ? 'Play' : 'Pause'; e.target.blur && e.target.blur(); };
+$('next').onclick = (e) => { start(); e.target.blur(); };
+$('mode').onchange = () => start();
+$('you').onchange = () => start();
+
+start();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
